@@ -7,8 +7,10 @@ const production = process.argv.includes('--production');
 const base = process.env.SITE_BASE || '/';
 if (!/^\/(?:[a-zA-Z0-9_-]+\/)*$/.test(base)) throw new Error('SITE_BASE must be / or /repository-name/');
 if (production && base !== '/') throw new Error('Apex production requires SITE_BASE=/');
-const origin = production ? 'https://ecoutemoi.ru' : (process.env.SITE_ORIGIN || 'http://127.0.0.1:4173');
-if (new URL(origin).origin !== origin || !/^https?:\/\//.test(origin)) throw new Error('SITE_ORIGIN must be a plain HTTP(S) origin');
+const originInput = production ? 'https://ecoutemoi.ru' : (process.env.SITE_ORIGIN || 'http://127.0.0.1:4173');
+const originUrl = new URL(originInput);
+if (!['https:', 'http:'].includes(originUrl.protocol) || originUrl.pathname !== '/' || originUrl.search || originUrl.hash || originUrl.username || originUrl.password) throw new Error('SITE_ORIGIN must be a plain HTTP(S) origin');
+const origin = originUrl.origin;
 const escape = (s: string) => s.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
 const template = readFileSync('dist/index.html', 'utf8');
 for (const route of ['/', ...Object.keys(pages), '/404']) {

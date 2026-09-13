@@ -1,8 +1,8 @@
-# Deployment and approval gates
+# Deployment
 
-Current stage: local preview. No push, remote repository creation, Pages deployment or domain connection performed. Project can be moved intact to a standalone Git repository without any parent/mobile history.
+Owner approved publication and connection of ecoutemoi.ru on 2026-09-13. Public repository: https://github.com/Dezfield/ecoutemoi-site. GitHub Actions is the Pages source. Current repository variables: SITE_BASE=/, PAGES_DEPLOY_APPROVED=true, PRODUCTION_APPROVED=true. Domain ownership is verified and the Pages custom domain is ecoutemoi.ru. The initial production workflow completed successfully: https://github.com/Dezfield/ecoutemoi-site/actions/runs/34770779859. Legal placeholders remain explicit pending final owner-provided details.
 
-1. Complete owner review using OWNER_REVIEW.md and resolve release content blockers.
+For a new installation, follow these steps. The existing installation has owner approval; do not recreate it.
 2. After owner authorizes publication, create the repository Dezfield/ecoutemoi-site (confirm account and visibility). Review source for private data, initialize a fresh Git history, commit and push. GitHub Pages plan support differs for private repositories; Free supports public repositories. Confirm plan/visibility before choosing. Do not expose the existing private app source.
 3. Choose GitHub Actions as Pages source. Configure the `github-pages` environment with owner review if available.
 4. For temporary project Pages, set SITE_BASE=/ecoutemoi-site/, PAGES_DEPLOY_APPROVED=true; leave PRODUCTION_APPROVED unset. Push main or dispatch the workflow. It installs via npm ci, lints, type-checks, builds, runs static checks, uploads dist and deploys. PRs build only. The workflow sets SITE_ORIGIN to the repository owner's github.io origin for preview metadata; local preview defaults to 127.0.0.1. No custom domain in this step.
@@ -17,3 +17,4 @@ Official sources checked 2026-09-13:
 - https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages
 - https://vite.dev/guide/static-deploy.html
 - https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits
+

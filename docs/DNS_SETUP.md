@@ -1,13 +1,13 @@
-# Future DNS setup — DO NOT EXECUTE BEFORE OWNER APPROVAL
+# DNS setup
 
-Prepared from current GitHub documentation checked 2026-09-13. This file is instructions only, not a live inventory or a change log. No DNS has been modified. No production domain connected.
+Owner approved publication and domain connection on 2026-09-13. The four apex A records and www CNAME below are installed in Cloudflare, DNS only, TTL Auto. GitHub ownership verification succeeded; preserve its _github-pages-challenge-dezfield TXT record. The Pages custom domain was saved before the apex records were added. Certificate provisioning is managed by GitHub Pages.
 
 ## Current and intended topology
-Owner reports Cloudflare DNS and existing admin.ecoutemoi.ru. Preserve its exact records, proxy setting and routing. Current apex, www, MX, TXT, CAA, DNSSEC and nameserver details have not been inventoried. Export the zone and record the current apex/www values before any edit. api.ecoutemoi.ru is reserved for future work and must not be created now.
+Before connection, apex A/AAAA and www were absent. Three existing admin records (one CNAME and two verification TXT records) were inventoried and remain unchanged, including DNS-only mode and Auto TTL. admin.ecoutemoi.ru returned HTTP 200 over valid HTTPS after the changes. Nameservers remain austin.ns.cloudflare.com and meadow.ns.cloudflare.com. api.ecoutemoi.ru remains reserved for future work.
 
 **DO NOT DELETE admin.ecoutemoi.ru.** Do not change nameservers, wildcard records, mail records, verification records, backend endpoints or Supabase settings. Any conflict with an existing service requires explicit owner review.
 
-## Approved configuration, later
+## Configuration and maintenance
 1. Verify domain ownership in GitHub account settings following GitHub's domain verification procedure; protect the verification TXT record. This is itself a DNS change requiring approval.
 2. Add ecoutemoi.ru as the repository Pages custom domain BEFORE repointing DNS, to reduce takeover risk. For custom Actions, a CNAME file is not required and is ignored; configure domain in Pages settings.
 3. With owner authorization, set only the required apex A records:
@@ -47,3 +47,4 @@ Keep the prior Pages artifact and zone export. Re-deploy the last accepted artif
 Sources:
 - https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site
 - https://developers.cloudflare.com/dns/proxy-status/
+

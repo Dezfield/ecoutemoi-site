@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+import { readFileSync, writeFileSync } from 'node:fs';
+const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
+const bars = Array.from({length: 55}, (_, i) => `<rect x="${700+i*7}" y="${320-(15+Math.sin(i*1.6)**2*65)}" width="3" height="${30+Math.sin(i*1.6)**2*130}" rx="2" fill="#e46f07"/>`).join('');
+const brand = readFileSync('public/brand-mark.svg', 'utf8').replace('<svg ', '<svg x="63" y="40" ').replace('width="1024" height="1024"','width="68" height="68"');
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><rect width="1200" height="630" fill="#091c18"/>${brand}<text x="143" y="85" fill="#f7f3e9" font-family="Georgia" font-size="32">Écoute Moi</text><g fill="none" stroke="#40574a" opacity=".55"><ellipse cx="890" cy="320" rx="235" ry="205"/><ellipse cx="890" cy="320" rx="195" ry="175"/></g>${bars}<g font-family="Arial" font-size="84" fill="#f7f3e9"><text x="80" y="245">Слушать.</text><text x="80" y="336">Слышать.</text></g><text x="80" y="430" font-family="Georgia" font-style="italic" font-size="90" fill="#e46f07">Видеть.</text><text x="84" y="525" font-family="Arial" font-size="22" fill="#a3b3aa">Знакомства, которые начинаются с голоса.</text><text x="1080" y="575" font-family="Arial" font-size="18" fill="#a3b3aa">18+</text></svg>`;
+writeFileSync('public/og.svg', svg);
+await page.setContent(`<style>body{margin:0}</style>${svg}`);
+await page.screenshot({ path: 'public/og.png' });
+await browser.close();
+console.log('Brand social card generated: 1200×630 SVG + PNG');

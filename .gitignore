@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+qa/*.html
+qa/*.json
+qa/*.png
+!qa/README.md
+docs/AUDIT_REPORT.md
+docs/PREVIEW_REPORT.md
+docs/OWNER_REVIEW.md
+docs/CONTENT_TODO.md
+docs/RELEASE_STATE.md

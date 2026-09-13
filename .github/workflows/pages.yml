@@ -1,0 +1,52 @@
+name: Verify and publish website
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      SITE_BASE: ${{ vars.SITE_BASE || '/ecoutemoi-site/' }}
+      SITE_ORIGIN: https://${{ github.repository_owner }}.github.io
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - name: Build preview or approved production artifact
+        run: |
+          if [ "$PRODUCTION_APPROVED" = "true" ]; then
+            npm run build:production
+          else
+            npm run build
+          fi
+        env:
+          PRODUCTION_APPROVED: ${{ vars.PRODUCTION_APPROVED }}
+      - run: node scripts/check.mjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.PAGES_DEPLOY_APPROVED == 'true'
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy approved artifact
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,67 +1,81 @@
 /**
- * Auth error messages — ported from mobile/src/auth/errors.ts.
- * Business logic is identical to keep a unified user experience.
+ * Auth error messages — ported from mobile/src/auth/errors.ts so that web
+ * and mobile show the same wording. Web-only additions are marked below.
+ * Raw provider/server messages are never shown to the user.
  */
 
-const includesAny = (value: string, parts: string[]) =>
-  parts.some((part) => value.includes(part));
+const includesAny = (value: string, parts: string[]) => parts.some((part) => value.includes(part));
+
+function rawMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error && 'message' in error) {
+    return String((error as { message?: unknown }).message ?? '');
+  }
+  return String(error ?? '');
+}
+
+export const AUTH_CANCELLED_MESSAGE = 'Вход отменён.';
+export const NETWORK_ERROR_MESSAGE = 'Нет соединения с интернетом. Проверьте сеть и попробуйте снова.';
 
 export function authErrorMessage(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error ?? '');
-  const message = raw.toLowerCase();
+  const message = rawMessage(error).toLowerCase();
   const code =
     typeof error === 'object' && error && 'code' in error
       ? String((error as { code?: unknown }).code ?? '').toLowerCase()
       : '';
 
-  if (
-    includesAny(code, ['request_canceled', 'cancelled', 'canceled']) ||
-    includesAny(message, ['cancelled', 'canceled'])
-  ) {
-    return 'Вход отменён.';
+  // Checked before "cancelled": OAuth providers report these with the
+  // generic `access_denied` error code.
+  if (includesAny(message, ['signups not allowed', 'signup is disabled'])) {
+    return 'Аккаунт с таким email не найден. Выберите регистрацию.';
+  }
+  if (includesAny(message, ['user is banned', 'banned'])) {
+    return 'Доступ к аккаунту ограничен. Обратитесь в поддержку.';
   }
   if (
-    includesAny(message, [
-      'network request failed',
-      'failed to fetch',
-      'network error',
-      'offline',
-    ])
+    includesAny(code, ['request_canceled', 'cancelled', 'canceled', 'access_denied']) ||
+    includesAny(message, ['cancelled', 'canceled', 'access_denied', 'access denied'])
   ) {
-    return 'Нет соединения с интернетом. Проверьте сеть и попробуйте снова.';
+    return AUTH_CANCELLED_MESSAGE;
+  }
+  if (includesAny(message, ['network request failed', 'failed to fetch', 'network error', 'offline', 'load failed'])) {
+    return NETWORK_ERROR_MESSAGE;
+  }
+  // Web-only: PKCE links must be opened in the browser that requested them.
+  if (
+    includesAny(code, ['flow_state_not_found', 'flow_state_expired', 'bad_code_verifier']) ||
+    includesAny(message, ['code verifier', 'invalid flow state', 'flow state'])
+  ) {
+    return 'Ссылка устарела или открыта в другом браузере. Откройте её в том же браузере, где начинали вход, или запросите новую.';
+  }
+  // Web-only: provider/email rate limits.
+  if (
+    includesAny(code, ['over_email_send_rate_limit', 'over_request_rate_limit']) ||
+    includesAny(message, ['rate limit', 'for security purposes, you can only request'])
+  ) {
+    return 'Слишком много попыток. Подождите несколько минут и попробуйте снова.';
   }
   if (includesAny(message, ['invalid login credentials', 'invalid credentials'])) {
     return 'Неверный email или пароль.';
   }
-  if (
-    includesAny(message, [
-      'token has expired',
-      'otp_expired',
-      'invalid otp',
-      'token is invalid',
-    ])
-  ) {
+  if (includesAny(message, ['token has expired', 'otp_expired', 'invalid otp', 'token is invalid'])
+    || includesAny(code, ['otp_expired'])) {
     return 'Код неверный или его срок действия истёк. Запросите новый код.';
   }
   if (includesAny(message, ['signups not allowed', 'user not found'])) {
-    return 'Аккаунт с таким email не найден.';
+    return 'Аккаунт с таким email не найден. Выберите регистрацию.';
   }
   if (includesAny(message, ['email not confirmed', 'email_not_confirmed'])) {
     return 'Подтвердите email кодом из письма.';
   }
-  if (
-    includesAny(message, [
-      'already registered',
-      'user already exists',
-      'identity already exists',
-    ])
-  ) {
+  if (includesAny(message, ['already registered', 'user already exists', 'identity already exists'])) {
     return 'Этот способ входа уже связан с другим аккаунтом. Автоматическое объединение отключено для вашей безопасности.';
   }
-  if (
-    includesAny(message, ['weak password', 'password should be', 'password must'])
-  ) {
+  if (includesAny(message, ['weak password', 'password should be', 'password must'])) {
     return 'Пароль должен содержать не менее 8 символов, буквы и цифры.';
+  }
+  if (includesAny(message, ['same_password', 'should be different from the old password'])) {
+    return 'Новый пароль должен отличаться от прежнего.';
   }
   if (includesAny(message, ['expired', 'authorization code'])) {
     return 'Срок действия авторизации истёк. Начните вход заново.';
@@ -75,17 +89,36 @@ export function authErrorMessage(error: unknown): string {
   if (includesAny(message, ['banned', 'suspended', 'blocked'])) {
     return 'Доступ к аккаунту ограничен. Обратитесь в поддержку.';
   }
+  if (includesAny(message, ['provider is not enabled', 'unsupported provider', 'provider not enabled'])) {
+    return 'Этот способ входа пока недоступен на сайте. Используйте вход по почте или приложение.';
+  }
   return 'Не удалось выполнить вход. Попробуйте ещё раз.';
 }
 
 export function validateEmail(email: string): string {
   const normalized = email.trim().toLowerCase();
-  if (
-    !normalized ||
-    normalized.length > 254 ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)
-  ) {
+  if (!normalized || normalized.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
     throw new Error('Введите корректный email.');
   }
   return normalized;
+}
+
+export function validatePassword(password: string): void {
+  if (password.length < 8 || !/[A-Za-zА-Яа-яЁё]/.test(password) || !/\d/.test(password)) {
+    throw new Error('Пароль должен содержать не менее 8 символов, буквы и цифры.');
+  }
+}
+
+/** Validation errors produced locally carry user-facing text already. */
+export function isLocalValidationMessage(error: unknown): error is Error {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.message.startsWith('Введите') ||
+    error.message.startsWith('Парол') ||
+    error.message.startsWith('Не удалось создать сессию')
+  );
+}
+
+export function userFacingAuthError(error: unknown): string {
+  return isLocalValidationMessage(error) ? error.message : authErrorMessage(error);
 }

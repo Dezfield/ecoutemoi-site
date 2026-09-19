@@ -4,6 +4,15 @@
 //
 //   npm run test:e2e
 //
+// The mock implements ONLY backend contracts committed in ecoutemoi-mobile
+// main (see docs/WEB_BACKEND_MATRIX.md) with the shapes defined there. Any
+// other RPC, table, storage bucket or Edge Function request is recorded and
+// fails the check, so these tests cannot pass by agreeing with an invented
+// backend.
+//
+// Two builds are tested: the production-default build (web signup disabled)
+// and a build with VITE_AUTH_SIGNUP_ENABLED=true.
+//
 // Browser selection: E2E_CHROMIUM_PATH=<chrome binary> or
 // E2E_BROWSER_CHANNEL=msedge|chrome; otherwise Playwright's bundled Chromium.
 import AxeBuilder from '@axe-core/playwright';
@@ -19,20 +28,30 @@ const SUPABASE_URL = 'https://e2e.supabase.test';
 const STORAGE_KEY = 'sb-e2e-auth-token';
 const PORT = Number(process.env.E2E_PORT || 4175);
 const APP = `http://127.0.0.1:${PORT}`;
+const SIGNUP_APP = `http://127.0.0.1:${PORT + 1}`;
 const DIST = resolve('dist-e2e');
+const SIGNUP_DIST = resolve('dist-e2e-signup');
 
 // ---------------------------------------------------------------- build
-if (!process.env.E2E_SKIP_BUILD) {
-  execFileSync(process.execPath, [resolve('node_modules/vite/bin/vite.js'), 'build', '--outDir', DIST, '--emptyOutDir', '--logLevel', 'warn'], {
+function build(outDir, extraEnv) {
+  execFileSync(process.execPath, [resolve('node_modules/vite/bin/vite.js'), 'build', '--outDir', outDir, '--emptyOutDir', '--logLevel', 'warn'], {
     stdio: 'inherit',
     env: {
       ...process.env,
       VITE_SUPABASE_URL: SUPABASE_URL,
       VITE_SUPABASE_ANON_KEY: 'e2e-publishable-key',
       VITE_PUBLIC_SITE_URL: 'https://ecoutemoi.ru',
+      // Google is requested in both builds: it must stay hidden while signup is disabled.
       VITE_AUTH_OAUTH_PROVIDERS: 'google',
+      VITE_AUTH_SIGNUP_ENABLED: '',
+      ...extraEnv,
     },
   });
+}
+
+if (!process.env.E2E_SKIP_BUILD) {
+  build(DIST, {});
+  build(SIGNUP_DIST, { VITE_AUTH_SIGNUP_ENABLED: 'true' });
 }
 
 // ---------------------------------------------------------------- mock backend
@@ -40,7 +59,28 @@ const USER_ID = '5f1c7a3e-2b4d-4c6e-8a9b-0c1d2e3f4a5b';
 const b64url = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
-function makeUser(email) {
+// Verified contracts (ecoutemoi-mobile main). Keep in sync with docs/WEB_BACKEND_MATRIX.md.
+const VERIFIED_RPCS = new Set([
+  'get_my_dating_profile_v5',
+  'get_my_entitlement',
+  'get_my_account_restriction',
+  'get_my_blocked_users',
+  'unblock_user',
+]);
+const VERIFIED_TABLES = new Set(['profiles', 'dating_profiles', 'privacy_settings']);
+const VERIFIED_BUCKETS = new Set(['dating-photos', 'dating-audio']);
+
+const identity = (provider) => ({
+  id: `${provider}-identity`,
+  identity_id: `${provider}-identity-id`,
+  user_id: USER_ID,
+  provider,
+  identity_data: {},
+  created_at: '2026-09-01T10:00:00Z',
+  updated_at: '2026-09-01T10:00:00Z',
+});
+
+function makeUser(email, identities = [identity('email')]) {
   return {
     id: USER_ID,
     aud: 'authenticated',
@@ -49,9 +89,9 @@ function makeUser(email) {
     email_confirmed_at: '2026-09-01T10:00:00Z',
     created_at: '2026-09-01T10:00:00Z',
     updated_at: '2026-09-01T10:00:00Z',
-    app_metadata: { provider: 'email', providers: ['email'] },
+    app_metadata: { provider: 'email', providers: identities.map((item) => item.provider) },
     user_metadata: {},
-    identities: [],
+    identities,
   };
 }
 
@@ -79,30 +119,31 @@ function createMock() {
   const state = {
     onboardingComplete: true,
     datingProfileFails: false,
+    identities: [identity('email')],
+    // get_my_entitlement() always returns exactly one row: (tier, is_premium, premium_until).
+    entitlement: { tier: 'premium', is_premium: true, premium_until: '2026-12-31T00:00:00Z' },
+    // get_my_account_restriction() returns zero or one row: (sanction, reason, expires_at).
+    restriction: null,
     blocked: [
       { user_id: '11111111-1111-4111-8111-111111111111', display_name: 'Анна', blocked_at: '2026-09-10T12:00:00Z' },
       { user_id: '22222222-2222-4222-8222-222222222222', display_name: 'Мария', blocked_at: '2026-09-11T12:00:00Z' },
     ],
-    notifications: {
-      messagesEnabled: true, datingEnabled: true, productEnabled: false, quietHoursEnabled: false,
-      quietStart: '22:00', quietEnd: '08:00', timezone: 'Europe/Moscow', deliveryMode: 'instant', safetyAlwaysOn: true,
-      updatedAt: null,
-    },
     calls: [],
+    unverified: [],
   };
 
-  const cors = {
-    'access-control-allow-origin': APP,
-    'access-control-allow-headers': '*',
-    'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-    'access-control-expose-headers': '*',
-  };
-
-  const json = (route, status, body) =>
+  const json = (route, status, body, cors) =>
     route.fulfill({ status, headers: { ...cors, 'content-type': 'application/json' }, body: body === undefined ? '' : JSON.stringify(body) });
 
   async function handle(route) {
     const request = route.request();
+    const origin = request.headers().origin;
+    const cors = {
+      'access-control-allow-origin': origin === APP || origin === SIGNUP_APP ? origin : APP,
+      'access-control-allow-headers': '*',
+      'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+      'access-control-expose-headers': '*',
+    };
     const url = new URL(request.url());
     const method = request.method();
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
@@ -110,118 +151,101 @@ function createMock() {
     let body = {};
     try { body = request.postDataJSON() ?? {}; } catch { body = {}; }
     state.calls.push({ method, path, search: url.search, body });
+    const unverified = () => {
+      state.unverified.push(`${method} ${path}`);
+      return json(route, 404, { code: 'PGRST202', message: `not a verified backend contract: ${path}` }, cors);
+    };
 
-    // ---- Auth
-    if (path === '/auth/v1/otp') return json(route, 200, {});
+    // ---- Supabase Auth (GoTrue) endpoints used by supabase-js
+    if (path === '/auth/v1/otp') return json(route, 200, {}, cors);
     if (path === '/auth/v1/verify') {
       if (body.token_hash) {
-        if (body.token_hash === 'valid-token-hash-1234') return json(route, 200, makeSession());
-        return json(route, 403, { code: 'otp_expired', msg: 'Email link is invalid or has expired' });
+        if (body.token_hash === 'valid-token-hash-1234') return json(route, 200, makeSession(), cors);
+        return json(route, 403, { code: 'otp_expired', msg: 'Email link is invalid or has expired' }, cors);
       }
-      if (body.token === '123456') return json(route, 200, makeSession(body.email));
-      return json(route, 403, { code: 'otp_expired', error_code: 'otp_expired', msg: 'Token has expired or is invalid' });
+      if (body.token === '123456') return json(route, 200, makeSession(body.email), cors);
+      return json(route, 403, { code: 'otp_expired', error_code: 'otp_expired', msg: 'Token has expired or is invalid' }, cors);
     }
     if (path === '/auth/v1/token') {
-      if (url.searchParams.get('grant_type') === 'refresh_token') return json(route, 200, makeSession());
-      return json(route, 400, { code: 'flow_state_not_found', msg: 'invalid flow state, no valid flow state found' });
+      if (url.searchParams.get('grant_type') === 'refresh_token') return json(route, 200, makeSession(), cors);
+      return json(route, 400, { code: 'flow_state_not_found', msg: 'invalid flow state, no valid flow state found' }, cors);
     }
-    if (path === '/auth/v1/user') {
-      if (method === 'PUT') return json(route, 200, makeUser('tester@example.com'));
-      return json(route, 200, makeUser('tester@example.com'));
-    }
+    if (path === '/auth/v1/user') return json(route, 200, makeUser('tester@example.com', state.identities), cors);
     if (path === '/auth/v1/logout') return route.fulfill({ status: 204, headers: cors });
 
-    // ---- REST tables (own rows only)
-    if (path === '/rest/v1/profiles') return json(route, 200, [{ id: USER_ID, display_name: 'Алиса', created_at: '2026-09-01T10:00:00Z' }]);
-    if (path === '/rest/v1/dating_profiles') {
-      if (state.datingProfileFails) return json(route, 500, { code: 'XX000', message: 'internal error' });
-      return json(route, 200, state.onboardingComplete ? [{ onboarding_complete: true }] : []);
-    }
-    if (path === '/rest/v1/privacy_settings') return json(route, 200, [{ nearby_opt_in: false }]);
-
-    // ---- RPC
-    const rpc = path.startsWith('/rest/v1/rpc/') ? path.slice('/rest/v1/rpc/'.length) : null;
-    switch (rpc) {
-      case 'get_my_dating_profile_v5':
-        return json(route, 200, state.onboardingComplete ? [{
-          display_name: 'Алиса', about: 'Люблю долгие прогулки и джаз.', birth_date: '1996-03-14', city: 'Москва',
-          country_code: 'RU', gender_code: 'woman', looking_for: ['man'], relationship_goal: 'serious',
-          interests: ['музыка', 'книги'], languages: ['ru', 'en'], preferred_min_age: 27, preferred_max_age: 40,
-          audio_prompt_key: 'good_day', audio_path: null, audio_duration_seconds: 32,
-          photo_paths: [`${USER_ID}/photos/1`], onboarding_complete: true, discovery_enabled: true,
-          profile_values: ['честность'], children_preference: 'open', smoking_code: 'never', alcohol_code: 'occasionally',
-          communication_pace: 'balanced', what_matters: '', zodiac_sign: 'pisces',
-        }] : []);
-      case 'get_my_store_subscription_v1':
-        return json(route, 200, [{ tier: 'premium', active: true, premium_until: '2026-12-31T00:00:00Z', source: 'store', store_platform: 'apple', store_product_id: 'ecoute_premium_monthly', store_feature_available: false }]);
-      case 'get_my_login_methods':
-        return json(route, 200, [
-          { provider: 'apple', connected: false, identityId: null, label: null },
-          { provider: 'google', connected: false, identityId: null, label: null },
-          { provider: 'vk', connected: false, identityId: null, label: null },
-          { provider: 'email', connected: true, identityId: 'id-email', label: 'tester@example.com' },
-        ]);
-      case 'get_my_active_sessions':
-        return json(route, 200, [
-          { session_id: 'sess-current', created_at: '2026-09-18T10:00:00Z', updated_at: '2026-09-18T12:00:00Z', user_agent: 'Mozilla/5.0 (Windows NT 10.0)', ip_address: '203.0.113.5', current_session: true },
-          { session_id: 'sess-phone', created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T12:00:00Z', user_agent: 'Mozilla/5.0 (iPhone)', ip_address: null, current_session: false },
-        ]);
-      case 'get_my_blocked_users':
-        return json(route, 200, state.blocked);
-      case 'unblock_user':
-        state.blocked = state.blocked.filter((item) => item.user_id !== body.p_blocked_user_id);
-        return route.fulfill({ status: 204, headers: cors });
-      case 'get_my_notification_preferences_v1':
-        return json(route, 200, state.notifications);
-      case 'update_my_notification_preferences_v1':
-        state.notifications = {
-          ...state.notifications,
-          messagesEnabled: body.p_messages_enabled, datingEnabled: body.p_dating_enabled, productEnabled: body.p_product_enabled,
-          quietHoursEnabled: body.p_quiet_hours_enabled, quietStart: body.p_quiet_start, quietEnd: body.p_quiet_end,
-          timezone: body.p_timezone, deliveryMode: body.p_delivery_mode, updatedAt: new Date().toISOString(),
-        };
-        return json(route, 200, state.notifications);
-      case 'get_my_safety_center_v1':
-        return json(route, 200, { accountStatus: 'clear', activeSanction: null, recentReports: [], recentAppeals: [], hasMoreReports: false });
-      case 'export_my_account_data':
-        return json(route, 200, { formatVersion: 1, account: { id: USER_ID } });
-      case null:
-        break;
-      default:
-        return json(route, 404, { code: 'PGRST202', message: `Could not find the function public.${rpc}` });
+    // ---- PostgREST RPC: verified functions only
+    if (path.startsWith('/rest/v1/rpc/')) {
+      const rpc = path.slice('/rest/v1/rpc/'.length);
+      if (!VERIFIED_RPCS.has(rpc)) return unverified();
+      switch (rpc) {
+        case 'get_my_dating_profile_v5':
+          return json(route, 200, state.onboardingComplete ? [{
+            display_name: 'Алиса', about: 'Люблю долгие прогулки и джаз.', birth_date: '1996-03-14', city: 'Москва',
+            gender_code: 'woman', looking_for: ['man'], relationship_goal: 'serious',
+            interests: ['музыка', 'книги'], languages: ['ru', 'en'], preferred_min_age: 27, preferred_max_age: 40,
+            audio_prompt_key: 'good_day', audio_path: null, audio_duration_seconds: 32,
+            photo_paths: [`${USER_ID}/photos/1`], onboarding_complete: true, discovery_enabled: true,
+            profile_values: ['честность'], children_preference: 'open', smoking_code: 'never', alcohol_code: 'occasionally',
+            communication_pace: 'balanced', what_matters: '', zodiac_sign: 'pisces', country_code: 'RU',
+          }] : [], cors);
+        case 'get_my_entitlement':
+          return json(route, 200, [state.entitlement], cors);
+        case 'get_my_account_restriction':
+          return json(route, 200, state.restriction ? [state.restriction] : [], cors);
+        case 'get_my_blocked_users':
+          return json(route, 200, state.blocked, cors);
+        case 'unblock_user':
+          state.blocked = state.blocked.filter((item) => item.user_id !== body.p_blocked_user_id);
+          return route.fulfill({ status: 204, headers: cors });
+      }
     }
 
-    // ---- Storage and functions
+    // ---- PostgREST tables: own rows only (RLS), verified tables only
+    if (path.startsWith('/rest/v1/')) {
+      const table = path.slice('/rest/v1/'.length);
+      if (!VERIFIED_TABLES.has(table)) return unverified();
+      if (url.searchParams.get(table === 'profiles' ? 'id' : 'user_id') !== `eq.${USER_ID}`) {
+        state.unverified.push(`${method} ${path}: not filtered by the own user id`);
+        return json(route, 400, { code: 'PGRST100', message: 'unexpected filter' }, cors);
+      }
+      if (table === 'profiles') return json(route, 200, [{ id: USER_ID, display_name: 'Алиса', created_at: '2026-09-01T10:00:00Z' }], cors);
+      if (table === 'dating_profiles') {
+        if (state.datingProfileFails) return json(route, 500, { code: 'XX000', message: 'internal error' }, cors);
+        return json(route, 200, state.onboardingComplete ? [{ onboarding_complete: true }] : [], cors);
+      }
+      return json(route, 200, [{ nearby_opt_in: false }], cors);
+    }
+
+    // ---- Storage: signed URLs for own private media in verified buckets
     if (path.startsWith('/storage/v1/object/sign/')) {
-      if (method === 'POST') return json(route, 200, { signedURL: `${path.replace('/storage/v1', '')}?token=e2e` });
+      const bucket = path.slice('/storage/v1/object/sign/'.length).split('/')[0];
+      if (!VERIFIED_BUCKETS.has(bucket)) return unverified();
+      if (method === 'POST') return json(route, 200, { signedURL: `${path.replace('/storage/v1', '')}?token=e2e` }, cors);
       return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'image/png' }, body: PNG_1PX });
     }
-    if (path === '/functions/v1/delete-my-account') {
-      const auth = request.headers().authorization ?? '';
-      if (!auth.startsWith('Bearer ') || body.confirmation !== 'delete-my-account') return json(route, 401, { error: 'authentication_required' });
-      return json(route, 200, { deleted: true });
-    }
-    return json(route, 404, { message: `unmocked ${method} ${path}` });
+
+    // Edge Functions and anything else: no verified contract exists.
+    return unverified();
   }
 
   return { state, handle };
 }
 
 // ---------------------------------------------------------------- runner
-const server = await startServer(PORT, DIST);
+const servers = [await startServer(PORT, DIST), await startServer(PORT + 1, SIGNUP_DIST)];
 const executablePath = process.env.E2E_CHROMIUM_PATH || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 const browser = await chromium.launch({ headless: true, executablePath, channel: executablePath ? undefined : process.env.E2E_BROWSER_CHANNEL });
 
 const results = [];
 let failures = 0;
 
-async function newContext({ viewport = { width: 1280, height: 900 }, signedIn = false, mockSetup } = {}) {
+async function newContext({ viewport = { width: 1280, height: 900 }, signedIn = false, mockSetup, app = APP } = {}) {
   const mock = createMock();
   mockSetup?.(mock.state);
   const context = await browser.newContext({ viewport, locale: 'ru-RU', timezoneId: 'Europe/Moscow' });
   await context.route(`${SUPABASE_URL}/**`, (route) => mock.handle(route));
-  // Any other external request must not happen (fonts excepted: none are used).
-  await context.route((url) => !url.href.startsWith(APP) && !url.href.startsWith(SUPABASE_URL), (route) => {
+  // Any other external request must not happen.
+  await context.route((url) => !url.href.startsWith(app) && !url.href.startsWith(SUPABASE_URL), (route) => {
     mock.state.calls.push({ external: route.request().url() });
     return route.abort();
   });
@@ -240,7 +264,13 @@ async function newContext({ viewport = { width: 1280, height: 900 }, signedIn = 
   page.on('console', (message) => {
     if (message.type() === 'error' && !/Failed to load resource/.test(message.text())) errors.push(`console: ${message.text()}`);
   });
-  return { context, page, mock, errors };
+  // Every context ends with the backend-contract check.
+  const close = async () => {
+    await context.close();
+    assert.deepEqual(mock.state.unverified, [], 'requests to backend objects that are not verified in ecoutemoi-mobile main');
+    assert.deepEqual(mock.state.calls.filter((call) => call.external), [], 'no third-party requests');
+  };
+  return { context, page, mock, errors, close };
 }
 
 async function step(name, fn) {
@@ -274,35 +304,39 @@ async function loginWithCode(page) {
   await page.getByRole('button', { name: 'Подтвердить код' }).click();
 }
 
-console.log('Web app E2E (mocked Supabase)');
+const bodyText = (page) => page.locator('body').innerText();
 
-await step('login page: renders, no private data, no overflow, axe clean (390 & 1440)', async () => {
+console.log('Web app E2E (mocked Supabase, verified contracts only)');
+
+// ------------------------------------------------------------ auth & routing
+await step('login page: renders, no private data, noindex, no overflow, axe clean (390 & 1440)', async () => {
   for (const width of [390, 1440]) {
-    const { context, page, errors } = await newContext({ viewport: { width, height: 900 } });
+    const { page, errors, close } = await newContext({ viewport: { width, height: 900 } });
     await page.goto(`${APP}/login`);
     await page.getByRole('heading', { name: 'Добро пожаловать' }).waitFor();
-    assert.equal(await page.getByRole('button', { name: 'Продолжить с Google' }).count(), 1, 'enabled provider shown');
-    assert.equal(await page.getByRole('button', { name: /Apple|VK/ }).count(), 0, 'disabled providers must not be buttons');
-    assert(await page.getByText(/Вход через Apple и VK на сайте появится позже/).isVisible());
     assert.equal(await page.locator('meta[name="robots"]').getAttribute('content'), 'noindex,nofollow');
     await noOverflow(page, `/login @${width}`);
     await axe(page, `/login @${width}`);
     assert.deepEqual(errors, []);
-    await context.close();
+    await close();
   }
+  const { page, close } = await newContext();
+  const robots = await page.request.get(`${APP}/robots.txt`);
+  assert.equal((await robots.text()).replace(/\r\n/g, '\n').trim(), 'User-agent: *\nDisallow: /');
+  await close();
 });
 
 await step('protected route: /account without session redirects to /login', async () => {
-  const { context, page } = await newContext();
+  const { page, close } = await newContext();
   await page.goto(`${APP}/account/security`);
   await page.waitForURL(`${APP}/login`);
-  assert.equal(await page.getByText('Активные сессии').count(), 0, 'no private content');
-  await context.close();
+  assert.equal(await page.getByText('Статус аккаунта').count(), 0, 'no private content');
+  await close();
 });
 
-await step('email OTP: wrong code error, correct code signs in and returns to the requested page', async () => {
-  const { context, page, mock, errors } = await newContext();
-  await page.goto(`${APP}/account/notifications`);
+await step('email OTP: sign-in never creates users; wrong code error; correct code returns to the requested page', async () => {
+  const { page, mock, errors, close } = await newContext();
+  await page.goto(`${APP}/account/blocked`);
   await page.waitForURL(`${APP}/login`);
   await page.getByLabel('Email').fill('tester@example.com');
   await page.getByRole('button', { name: 'Получить код' }).click();
@@ -314,25 +348,56 @@ await step('email OTP: wrong code error, correct code signs in and returns to th
   assert.equal(otp.body.create_user, false, 'sign-in must not create users');
   await page.getByLabel('Код из письма').fill('123456');
   await page.getByRole('button', { name: 'Подтвердить код' }).click();
-  await page.waitForURL(`${APP}/account/notifications`);
-  await page.getByRole('heading', { name: 'Уведомления', level: 1 }).waitFor();
+  await page.waitForURL(`${APP}/account/blocked`);
+  await page.getByRole('heading', { name: 'Заблокированные пользователи', level: 1 }).waitFor();
   assert.deepEqual(errors, []);
-  await context.close();
+  await close();
 });
 
-await step('signup page asks the server to create the account (create_user=true)', async () => {
-  const { context, page, mock } = await newContext();
+await step('login copy: unavailable methods are named and email login is not promised to open the same account', async () => {
+  const { page, close } = await newContext();
+  await page.goto(`${APP}/login`);
+  await page.getByRole('heading', { name: 'Добро пожаловать' }).waitFor();
+  const text = await bodyText(page);
+  assert.match(text, /Вход по номеру телефона, через Apple, через Google и через VK на сайте пока недоступен/);
+  assert.match(text, /вход по коду на почту не обязательно откроет тот же аккаунт/);
+  assert.doesNotMatch(text, /войдите по почте, привязанной к аккаунту/);
+  assert.doesNotMatch(text, /вы принимаете/i, 'no acceptance of unapproved legal documents');
+  assert.equal(await page.getByRole('link', { name: /Восстановить пароль/ }).count(), 0, 'no password entry point without password sign-in');
+  await close();
+});
+
+await step('signup flag OFF (production default): no registration form, no create_user request, no OAuth buttons', async () => {
+  const { page, mock, close } = await newContext();
+  await page.goto(`${APP}/login`);
+  await page.getByText('Нет аккаунта? Создайте его в приложении Écoute Moi.').waitFor();
+  assert.equal(await page.getByRole('link', { name: 'Создать аккаунт' }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: /Продолжить с (Google|Apple)/ }).count(), 0, 'OAuth creates users, so it stays hidden');
   await page.goto(`${APP}/signup`);
+  await page.getByText('Регистрация на сайте пока недоступна. Создайте аккаунт в приложении Écoute Moi.').waitFor();
+  assert.equal(await page.getByLabel('Email').count(), 0, 'no registration form');
+  assert.equal(mock.state.calls.filter((call) => call.path === '/auth/v1/otp').length, 0);
+  await axe(page, '/signup (disabled)');
+  await close();
+});
+
+await step('signup flag ON: registration form requests create_user=true and OAuth is offered', async () => {
+  const { page, mock, close } = await newContext({ app: SIGNUP_APP });
+  await page.goto(`${SIGNUP_APP}/login`);
+  await page.getByRole('link', { name: 'Создать аккаунт' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Продолжить с Google' }).count(), 1);
+  await page.goto(`${SIGNUP_APP}/signup`);
   await page.getByLabel('Email').fill('new@example.com');
   await page.getByRole('button', { name: 'Получить код' }).click();
   await page.getByLabel('Код из письма').waitFor();
   const otp = mock.state.calls.find((call) => call.path === '/auth/v1/otp');
   assert.equal(otp.body.create_user, true);
-  await context.close();
+  assert.doesNotMatch(await bodyText(page), /вы принимаете/i);
+  await close();
 });
 
-await step('session restore after reload + account overview with real data', async () => {
-  const { context, page, errors } = await newContext();
+await step('session restore after reload + overview with dating profile data', async () => {
+  const { page, errors, close } = await newContext();
   await page.goto(`${APP}/login`);
   await loginWithCode(page);
   await page.waitForURL(`${APP}/account`);
@@ -340,29 +405,39 @@ await step('session restore after reload + account overview with real data', asy
   await page.reload();
   await page.getByRole('heading', { name: 'Обзор', level: 1 }).waitFor();
   await page.locator('.profile-hero-age', { hasText: '30 лет' }).waitFor(); // age computed from birth date
-  assert(await page.locator('.profile-hero .chip-accent').getByText('Premium').isVisible(), 'plan badge');
+  await page.getByText('Москва, Россия').waitFor(); // city + country_code label
   const stored = await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY);
   assert(stored && JSON.parse(stored).access_token, 'session persisted by supabase-js');
   assert.deepEqual(errors, []);
-  await context.close();
+  await close();
 });
 
-await step('account sections render real data and are responsive (390–1440) and axe clean', async () => {
+await step('safe redirect: a crafted post-login destination is ignored after the callback', async () => {
+  const { page, close } = await newContext();
+  await page.goto(`${APP}/login`);
+  await page.evaluate(() => window.sessionStorage.setItem('ecoutemoi.auth.next', 'https://evil.example/steal'));
+  await page.goto(`${APP}/auth/callback?token_hash=valid-token-hash-1234&type=email`);
+  await page.waitForURL(`${APP}/account`);
+  await close();
+});
+
+// ------------------------------------------------------------ account sections
+await step('account sections render and are responsive (390–1440) and axe clean', async () => {
   const pages = [
     ['/account', 'Обзор'],
     ['/account/profile', 'Профиль'],
     ['/account/settings', 'Аккаунт и вход'],
     ['/account/privacy', 'Конфиденциальность'],
     ['/account/notifications', 'Уведомления'],
-    ['/account/subscription', 'Premium / Exclusive'],
+    ['/account/subscription', 'Premium'],
     ['/account/security', 'Безопасность'],
     ['/account/blocked', 'Заблокированные пользователи'],
     ['/account/support', 'Поддержка'],
     ['/account/legal', 'Документы'],
-    ['/account/delete', 'Удалить аккаунт'],
+    ['/account/delete', 'Удаление аккаунта'],
   ];
   for (const width of [390, 430, 768, 1024, 1280, 1440]) {
-    const { context, page, errors } = await newContext({ viewport: { width, height: 900 }, signedIn: true });
+    const { page, errors, close } = await newContext({ viewport: { width, height: 900 }, signedIn: true });
     for (const [path, title] of pages) {
       await page.goto(`${APP}${path}`);
       await page.getByRole('heading', { name: title, level: 1 }).waitFor();
@@ -371,48 +446,131 @@ await step('account sections render real data and are responsive (390–1440) an
       if (width === 390 || width === 1440) await axe(page, `${path} @${width}`);
     }
     assert.deepEqual(errors, []);
-    await context.close();
+    await close();
   }
 });
 
-await step('profile, settings, subscription, security show backend values', async () => {
-  const { context, page } = await newContext({ signedIn: true });
+await step('dating profile: get_my_dating_profile_v5 fields and a signed photo URL', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true });
   await page.goto(`${APP}/account/profile`);
   await page.getByText('Люблю долгие прогулки и джаз.').waitFor();
   assert(await page.getByText('Серьёзные отношения').isVisible());
+  assert(await page.getByText('Москва, Россия').isVisible());
   assert(await page.getByRole('img', { name: 'Фотография 1' }).isVisible());
-  await page.goto(`${APP}/account/settings`);
-  await page.getByText('Не подключено').first().waitFor();
-  assert(await page.locator('.list-row', { hasText: 'Почта' }).getByText('Подключено', { exact: true }).isVisible());
+  assert(mock.state.calls.some((call) => call.path === `/storage/v1/object/sign/dating-photos/${USER_ID}/photos/1`));
+  await close();
+});
+
+await step('Premium: active premium from get_my_entitlement, no store or payment source claimed', async () => {
+  const { page, close } = await newContext({ signedIn: true });
   await page.goto(`${APP}/account/subscription`);
-  await page.getByText(/Подписка оформлена через App Store/).waitFor();
-  await page.goto(`${APP}/account/security`);
-  await page.getByText('Ограничений нет').waitFor();
-  assert(await page.getByText('Этот браузер').isVisible());
-  assert(await page.getByRole('button', { name: 'Завершить другие сессии · 1' }).isEnabled());
-  await context.close();
+  await page.getByRole('heading', { name: 'Premium', level: 2 }).waitFor();
+  await page.getByText(/Действует до 31 декабря 2026/).waitFor();
+  const text = await bodyText(page);
+  assert.doesNotMatch(text, /App Store|Google Play|магазин|оформлен/i);
+  assert.doesNotMatch(text, /Exclusive/);
+  await page.goto(`${APP}/account`);
+  await page.locator('.profile-hero .chip-accent', { hasText: 'Premium' }).waitFor(); // plan badge
+  await close();
 });
 
-await step('notifications: toggles are real and saved through the RPC', async () => {
-  const { context, page, mock } = await newContext({ signedIn: true });
+await step('Premium: founder, free without entitlement row (is_premium null), expired premium', async () => {
+  const cases = [
+    [{ tier: 'founder', is_premium: true, premium_until: null }, 'Founder', /Бессрочный статус\./],
+    [{ tier: 'free', is_premium: null, premium_until: null }, 'Free', /^Premium не активен\.$/m],
+    [{ tier: 'free', is_premium: false, premium_until: '2026-01-31T00:00:00Z' }, 'Free', /Срок действия закончился 31 января 2026/],
+  ];
+  for (const [entitlement, label, status] of cases) {
+    const { page, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.entitlement = entitlement; } });
+    await page.goto(`${APP}/account/subscription`);
+    await page.getByRole('heading', { name: label, level: 2 }).waitFor();
+    assert.match(await page.locator('.plan-panel').innerText(), status);
+    if (label === 'Free') {
+      await page.goto(`${APP}/account`);
+      await page.getByRole('heading', { name: 'Обзор', level: 1 }).waitFor();
+      await page.waitForLoadState('networkidle');
+      assert.equal(await page.locator('.profile-hero .chip-accent').count(), 0, 'no plan badge when not active');
+    }
+    await close();
+  }
+});
+
+await step('login methods: Supabase identities only; VK shows an informational state, never connected/not connected', async () => {
+  const { page, close } = await newContext({
+    signedIn: true,
+    mockSetup: (state) => { state.identities = [identity('email'), identity('google')]; },
+  });
+  await page.goto(`${APP}/account/settings`);
+  const row = (name) => page.locator('.list-row', { has: page.locator('.list-title', { hasText: new RegExp(`^${name}$`) }) });
+  await row('Почта').getByText('Подключено', { exact: true }).waitFor();
+  assert(await row('Почта').getByText('tester@example.com').isVisible());
+  assert(await row('Google').getByText('Подключено', { exact: true }).isVisible());
+  assert(await row('Apple ID').getByText('Не подключено', { exact: true }).isVisible());
+  assert(await row('Телефон').getByText('Не подключено', { exact: true }).isVisible());
+  assert(await row('VK ID').getByText('Нет данных', { exact: true }).isVisible());
+  assert(await row('VK ID').getByText('Сайт не может проверить этот способ входа.').isVisible());
+  assert.equal(await row('VK ID').getByText(/Подключено|Не подключено/).count(), 0);
+  const text = await bodyText(page);
+  assert.match(text, /Способы входа относятся к одному аккаунту, только если они уже связаны с ним\./);
+  assert.doesNotMatch(text, /никогда не объединяет/);
+  await close();
+});
+
+await step('unsupported sections show honest fallbacks: export, notifications, sessions', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true });
+  await page.goto(`${APP}/account/settings`);
+  await page.getByText('Экспорт данных через веб пока недоступен.').waitFor();
+  assert.equal(await page.getByRole('button', { name: /Скачать/ }).count(), 0);
+
   await page.goto(`${APP}/account/notifications`);
-  const product = page.getByRole('switch', { name: 'Новости продукта' });
-  await product.waitFor();
-  assert.equal(await product.isChecked(), false);
-  await product.check();
-  await page.getByRole('radio', { name: 'Раз в день' }).check();
-  await page.getByRole('button', { name: 'Сохранить настройки' }).click();
-  await page.getByText('Настройки сохранены').waitFor();
-  const call = mock.state.calls.find((item) => item.path === '/rest/v1/rpc/update_my_notification_preferences_v1');
-  assert.equal(call.body.p_product_enabled, true);
-  assert.equal(call.body.p_delivery_mode, 'daily');
-  assert.equal(call.body.p_timezone, 'Europe/Moscow');
-  await context.close();
+  await page.getByText('Настройки уведомлений сейчас доступны в мобильном приложении Écoute Moi.').waitFor();
+  assert.equal(await page.getByRole('switch').count(), 0, 'no fake switches');
+  assert.equal(await page.getByRole('radio').count(), 0);
+  assert.equal(await page.getByRole('button', { name: /Сохранить/ }).count(), 0, 'no save button');
+
+  await page.goto(`${APP}/account/security`);
+  await page.getByText('Просмотр активных сессий на сайте пока недоступен.').waitFor();
+  const sessionsPanel = page.locator('section[aria-labelledby="sessions-title"]');
+  assert.equal(await sessionsPanel.locator('ul, li').count(), 0, 'no fake session list');
+  assert.equal(await page.getByText(/Последняя активность|IP:/).count(), 0, 'no fake session details');
+  const endOthers = page.getByRole('button', { name: 'Завершить другие сессии' });
+  assert.equal(await endOthers.innerText(), 'Завершить другие сессии', 'no invented session count');
+  await endOthers.click();
+  await page.getByRole('dialog', { name: 'Завершить другие сессии?' }).getByRole('button', { name: 'Завершить' }).click();
+  await page.getByText('Вход на других устройствах и в других браузерах завершён.').waitFor();
+  assert(mock.state.calls.some((call) => call.path === '/auth/v1/logout' && call.search.includes('scope=others')));
+  assert.notEqual(await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY), null, 'this browser stays signed in');
+  assert.equal(page.url(), `${APP}/account/security`);
+  await close();
 });
 
-await step('blocked users: unblock goes through unblock_user RPC after confirmation', async () => {
-  const { context, page, mock } = await newContext({ signedIn: true });
+await step('account status: get_my_account_restriction, no appeal form without a sanction id', async () => {
+  const clear = await newContext({ signedIn: true });
+  await clear.page.goto(`${APP}/account/security`);
+  await clear.page.getByText('Активных ограничений нет').waitFor();
+  await clear.close();
+
+  const { page, close } = await newContext({
+    signedIn: true,
+    mockSetup: (state) => {
+      state.restriction = { sanction: 'suspended', reason: 'Нарушение правил сообщества.', expires_at: '2026-09-30T12:00:00Z' };
+    },
+  });
+  await page.goto(`${APP}/account/security`);
+  await page.getByText('Аккаунт приостановлен').waitFor();
+  assert(await page.getByText('Нарушение правил сообщества.').isVisible());
+  assert(await page.getByText(/Действует до: 30 сентября 2026/).isVisible());
+  assert(await page.getByText(/Обжаловать ограничение через сайт пока нельзя/).isVisible());
+  assert.equal(await page.getByRole('textbox').count(), 0, 'no appeal form and no manual sanction id');
+  assert.doesNotMatch(await bodyText(page), /Мои жалобы/);
+  await axe(page, '/account/security (restricted)');
+  await close();
+});
+
+await step('blocked users: list from get_my_blocked_users; unblock via unblock_user after confirmation', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true });
   await page.goto(`${APP}/account/blocked`);
+  await page.getByText('Мария').waitFor();
   await page.getByRole('button', { name: 'Разблокировать: Анна' }).click();
   const dialog = page.getByRole('dialog', { name: 'Разблокировать пользователя?' });
   await dialog.waitFor();
@@ -423,13 +581,28 @@ await step('blocked users: unblock goes through unblock_user RPC after confirmat
   await dialog.getByRole('button', { name: 'Разблокировать' }).click();
   await page.getByText('Анна разблокирован(а).').waitFor();
   const call = mock.state.calls.find((item) => item.path === '/rest/v1/rpc/unblock_user');
-  assert.equal(call.body.p_blocked_user_id, '11111111-1111-4111-8111-111111111111');
+  assert.deepEqual(call.body, { p_blocked_user_id: '11111111-1111-4111-8111-111111111111' });
   assert.equal(await page.getByRole('button', { name: 'Разблокировать: Анна' }).count(), 0);
-  await context.close();
+  await close();
+});
+
+await step('delete account: no deletion backend, so no destructive control and no request', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true });
+  await page.goto(`${APP}/account/delete`);
+  await page.getByText('Удаление аккаунта через сайт пока недоступно.').first().waitFor();
+  assert.equal(await page.getByRole('button', { name: /Удалить/ }).count(), 0, 'no delete button');
+  assert.equal(await page.getByRole('timer').count(), 0, 'no deletion timer');
+  const link = page.getByRole('link', { name: 'Открыть страницу «Удаление аккаунта»' });
+  assert.equal(await link.getAttribute('href'), 'https://ecoutemoi.ru/account-deletion/');
+  await page.waitForLoadState('networkidle');
+  assert(!mock.state.calls.some((call) => call.path?.startsWith('/functions/v1/')), 'no Edge Function call');
+  await page.goto(`${APP}/account-deleted`);
+  await page.getByRole('heading', { name: 'Здесь пока тихо.' }).waitFor(); // no false "account deleted" page
+  await close();
 });
 
 await step('mobile navigation: menu button, aria-expanded, Escape and link navigation', async () => {
-  const { context, page } = await newContext({ viewport: { width: 390, height: 844 }, signedIn: true });
+  const { page, close } = await newContext({ viewport: { width: 390, height: 844 }, signedIn: true });
   await page.goto(`${APP}/account`);
   const menu = page.getByRole('button', { name: 'Меню', exact: true });
   await menu.waitFor();
@@ -446,11 +619,11 @@ await step('mobile navigation: menu button, aria-expanded, Escape and link navig
   await page.waitForURL(`${APP}/account/security`);
   await drawer.waitFor({ state: 'hidden' });
   await noOverflow(page, 'security @390 after drawer');
-  await context.close();
+  await close();
 });
 
 await step('logout: confirmation, local session cleared, private routes protected again', async () => {
-  const { context, page, mock } = await newContext({ signedIn: true });
+  const { page, mock, close } = await newContext({ signedIn: true });
   await page.goto(`${APP}/account`);
   await page.getByRole('heading', { name: 'Обзор', level: 1 }).waitFor();
   await page.locator('.sidebar').getByRole('button', { name: 'Выйти' }).click();
@@ -461,30 +634,30 @@ await step('logout: confirmation, local session cleared, private routes protecte
   assert.equal(await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY), null);
   await page.goto(`${APP}/account/profile`);
   await page.waitForURL(`${APP}/login`);
-  await context.close();
+  await close();
 });
 
 await step('profile check failure keeps the session and shows a recoverable error (no blank screen)', async () => {
-  const { context, page, mock } = await newContext({ signedIn: true, mockSetup: (state) => { state.datingProfileFails = true; } });
+  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.datingProfileFails = true; } });
   await page.goto(`${APP}/account`);
   await page.getByText('Профиль временно недоступен').waitFor();
   assert(await page.getByRole('heading', { name: 'Обзор', level: 1 }).isVisible());
   mock.state.datingProfileFails = false;
   await page.getByRole('button', { name: 'Повторить' }).first().click();
   await page.getByText('Профиль временно недоступен').waitFor({ state: 'hidden' });
-  await context.close();
+  await close();
 });
 
 await step('onboarding required: account works, banner explains app onboarding, no fake profile', async () => {
-  const { context, page } = await newContext({ signedIn: true, mockSetup: (state) => { state.onboardingComplete = false; } });
+  const { page, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.onboardingComplete = false; } });
   await page.goto(`${APP}/account/profile`);
   await page.getByText('Завершите создание профиля в приложении Écoute Moi').waitFor();
   await page.getByText('Анкета ещё не заполнена').waitFor();
-  await context.close();
+  await close();
 });
 
 await step('auth callback: cancelled, provider error, invalid code, implicit tokens rejected', async () => {
-  const { context, page } = await newContext();
+  const { page, close } = await newContext();
   await page.goto(`${APP}/auth/callback?error=access_denied&error_description=User%20cancelled`);
   await page.getByRole('heading', { name: 'Вход отменён' }).waitFor();
   assert.equal(new URL(page.url()).search, '', 'callback parameters removed from the address bar');
@@ -497,89 +670,49 @@ await step('auth callback: cancelled, provider error, invalid code, implicit tok
   await page.goto(`${APP}/auth/callback#access_token=forged&refresh_token=forged`);
   await page.getByRole('heading', { name: 'Не удалось войти' }).waitFor();
   assert.equal(await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY), null, 'no session from forged tokens');
-  await context.close();
+  await close();
 });
 
 await step('auth callback: email token_hash link signs in; recovery link forces new password', async () => {
-  const { context, page, mock } = await newContext();
-  await page.goto(`${APP}/auth/callback?token_hash=valid-token-hash-1234&type=email`);
-  await page.waitForURL(`${APP}/account`);
-  await context.close();
+  const first = await newContext();
+  await first.page.goto(`${APP}/auth/callback?token_hash=valid-token-hash-1234&type=email`);
+  await first.page.waitForURL(`${APP}/account`);
+  await first.close();
 
-  const second = await newContext();
-  await second.page.goto(`${APP}/auth/callback?token_hash=valid-token-hash-1234&type=recovery`);
-  await second.page.waitForURL(`${APP}/auth/reset-password`);
-  await second.page.goto(`${APP}/account`);
-  await second.page.waitForURL(`${APP}/auth/reset-password`); // recovery survives reload and blocks the shell
-  await second.page.getByLabel('Новый пароль').fill('short');
-  await second.page.getByLabel('Повторите пароль').fill('short');
-  await second.page.getByRole('button', { name: 'Сохранить пароль' }).click();
-  await second.page.getByText('Пароль должен содержать не менее 8 символов, буквы и цифры.').waitFor();
-  await second.page.getByLabel('Новый пароль').fill('newpass2026');
-  await second.page.getByLabel('Повторите пароль').fill('newpass2026');
-  await second.page.getByRole('button', { name: 'Сохранить пароль' }).click();
-  await second.page.waitForURL(`${APP}/account`);
-  assert(second.mock.state.calls.some((call) => call.path === '/auth/v1/user' && call.method === 'PUT' && call.body.password === 'newpass2026'));
-  assert(!mock.state.calls.some((call) => call.external), 'no unexpected external requests');
-  await second.context.close();
+  const { page, mock, close } = await newContext();
+  await page.goto(`${APP}/auth/callback?token_hash=valid-token-hash-1234&type=recovery`);
+  await page.waitForURL(`${APP}/auth/reset-password`);
+  await page.goto(`${APP}/account`);
+  await page.waitForURL(`${APP}/auth/reset-password`); // recovery survives reload and blocks the shell
+  await page.getByLabel('Новый пароль').fill('short');
+  await page.getByLabel('Повторите пароль').fill('short');
+  await page.getByRole('button', { name: 'Сохранить пароль' }).click();
+  await page.getByText('Пароль должен содержать не менее 8 символов, буквы и цифры.').waitFor();
+  await page.getByLabel('Новый пароль').fill('newpass2026');
+  await page.getByLabel('Повторите пароль').fill('newpass2026');
+  await page.getByRole('button', { name: 'Сохранить пароль' }).click();
+  await page.waitForURL(`${APP}/account`);
+  assert(mock.state.calls.some((call) => call.path === '/auth/v1/user' && call.method === 'PUT' && call.body.password === 'newpass2026'));
+  await close();
 });
 
 await step('reset-password without a recovery session shows an explanation', async () => {
-  const { context, page } = await newContext({ signedIn: true });
+  const { page, close } = await newContext({ signedIn: true });
   await page.goto(`${APP}/auth/reset-password`);
   await page.getByRole('heading', { name: 'Ссылка недействительна' }).waitFor();
-  await context.close();
-});
-
-await step('delete account: 3-minute cancellable timer, cancel on hidden tab, then Edge Function', async () => {
-  const { context, page, mock } = await newContext({ signedIn: true });
-  await page.clock.install();
-  await page.goto(`${APP}/account/delete`);
-  await page.getByRole('button', { name: 'Удалить аккаунт' }).last().click();
-  await page.getByRole('dialog', { name: 'Удалить аккаунт?' }).getByRole('button', { name: 'Запустить таймер' }).click();
-  await page.getByRole('timer').waitFor();
-  await page.getByRole('button', { name: 'Отменить удаление' }).click();
-  await page.getByText('Удаление отменено. Аккаунт сохранён.').waitFor();
-  await page.clock.fastForward('04:00');
-  assert(!mock.state.calls.some((call) => call.path === '/functions/v1/delete-my-account'), 'cancel prevents deletion');
-
-  // Hiding the tab cancels the timer (mobile cancels when the app is backgrounded).
-  await page.getByRole('button', { name: 'Удалить аккаунт' }).last().click();
-  await page.getByRole('dialog', { name: 'Удалить аккаунт?' }).getByRole('button', { name: 'Запустить таймер' }).click();
-  await page.getByRole('timer').waitFor();
-  await page.evaluate(() => {
-    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
-  });
-  await page.getByText(/Удаление отменено, потому что вкладка была скрыта/).waitFor();
-  await page.clock.fastForward('04:00');
-  assert(!mock.state.calls.some((call) => call.path === '/functions/v1/delete-my-account'), 'hidden tab prevents deletion');
-
-  await page.getByRole('button', { name: 'Удалить аккаунт' }).last().click();
-  await page.getByRole('dialog', { name: 'Удалить аккаунт?' }).getByRole('button', { name: 'Запустить таймер' }).click();
-  await page.clock.fastForward('02:00');
-  assert(!mock.state.calls.some((call) => call.path === '/functions/v1/delete-my-account'), 'not before three minutes');
-  await page.clock.fastForward('01:05');
-  await page.waitForURL(`${APP}/account-deleted`);
-  const call = mock.state.calls.find((item) => item.path === '/functions/v1/delete-my-account');
-  assert.equal(call.body.confirmation, 'delete-my-account');
-  await page.getByRole('heading', { name: 'Аккаунт удалён' }).waitFor();
-  assert.equal(await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY), null);
-  await context.close();
+  await close();
 });
 
 await step('unknown route shows 404 page; app never requests third-party hosts', async () => {
-  const { context, page, mock } = await newContext({ signedIn: true });
+  const { page, close } = await newContext({ signedIn: true });
   await page.goto(`${APP}/definitely-missing`);
   await page.getByRole('heading', { name: 'Здесь пока тихо.' }).waitFor();
   await page.goto(`${APP}/account`);
   await page.waitForLoadState('networkidle');
-  assert.deepEqual(mock.state.calls.filter((call) => call.external), []);
-  await context.close();
+  await close();
 });
 
 await browser.close();
-await new Promise((done) => server.close(done));
+await Promise.all(servers.map((server) => new Promise((done) => server.close(done))));
 console.log(`\n${results.length - failures}/${results.length} E2E checks passed.`);
 if (failures) process.exit(1);

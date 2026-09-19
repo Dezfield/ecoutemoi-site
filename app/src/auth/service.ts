@@ -1,21 +1,25 @@
 import type { OAuthProvider } from '../lib/env';
 import { rememberNextPath } from '../lib/redirect';
 import { requireSupabase } from '../lib/supabase';
-import { authCallbackUrl } from '../config';
+import { authCallbackUrl, config } from '../config';
 import type { CallbackParams } from './callback';
-import { validateEmail, validatePassword } from './errors';
+import { SIGNUP_DISABLED_MESSAGE, validateEmail, validatePassword } from './errors';
 
 /**
- * Web equivalents of mobile/src/auth/services/auth.ts. Same Supabase Auth
- * identity model: email one-time codes are the primary email method, OAuth
- * goes through Supabase, and nothing here stores or logs tokens or codes.
+ * Supabase Auth calls of the web app. The email one-time code is the same
+ * Supabase Auth mechanism the mobile app uses (mobile main
+ * src/services/cloudChat.ts: sendCloudEmailOtp / verifyCloudEmailOtp).
+ * Nothing here stores or logs tokens or codes.
  */
 
 /**
- * Sends a one-time email code. `shouldCreateUser` is false for sign-in and
- * true only on the explicit registration screen — the same rule as mobile.
+ * Sends a one-time email code. The sign-in screen always passes
+ * `shouldCreateUser: false`, so it never creates an account (mobile main
+ * sign-in passes true). `true` is accepted only from the registration screen
+ * and only when web signup is enabled for this build.
  */
 export async function sendEmailCode(email: string, shouldCreateUser: boolean): Promise<string> {
+  if (shouldCreateUser && !config.signupEnabled) throw new Error(SIGNUP_DISABLED_MESSAGE);
   const normalized = validateEmail(email);
   const { error } = await requireSupabase().auth.signInWithOtp({
     email: normalized,
@@ -36,9 +40,11 @@ export async function verifyEmailCode(email: string, code: string): Promise<void
 
 /**
  * Starts browser OAuth through Supabase. The browser leaves the app and
- * comes back to /auth/callback with a PKCE code.
+ * comes back to /auth/callback with a PKCE code. Only providers enabled for
+ * this build are accepted (none while web signup is disabled, see config.ts).
  */
 export async function startOAuth(provider: OAuthProvider, nextPath: string): Promise<void> {
+  if (!config.oauthProviders.includes(provider)) throw new Error('provider is not enabled');
   rememberNextPath(nextPath);
   const { error } = await requireSupabase().auth.signInWithOAuth({
     provider,
@@ -47,7 +53,12 @@ export async function startOAuth(provider: OAuthProvider, nextPath: string): Pro
   if (error) throw error;
 }
 
-/** Legacy password recovery — kept only for accounts that still have a password. */
+/**
+ * Supabase Auth password recovery for an account that has a password. Mobile
+ * main has no password sign-in and the web has none either, so this flow is
+ * not linked from the sign-in screen; it is kept so that a recovery link is
+ * completed safely (the session must set a new password first).
+ */
 export async function sendPasswordRecovery(email: string): Promise<void> {
   const { error } = await requireSupabase().auth.resetPasswordForEmail(validateEmail(email), {
     redirectTo: authCallbackUrl(),

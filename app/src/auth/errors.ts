@@ -1,7 +1,6 @@
 /**
- * Auth error messages — ported from mobile/src/auth/errors.ts so that web
- * and mobile show the same wording. Web-only additions are marked below.
- * Raw provider/server messages are never shown to the user.
+ * Auth error messages of the web app. Supabase Auth errors are mapped to
+ * neutral Russian text; raw provider/server messages are never shown.
  */
 
 const includesAny = (value: string, parts: string[]) => parts.some((part) => value.includes(part));
@@ -16,6 +15,13 @@ function rawMessage(error: unknown): string {
 
 export const AUTH_CANCELLED_MESSAGE = 'Вход отменён.';
 export const NETWORK_ERROR_MESSAGE = 'Нет соединения с интернетом. Проверьте сеть и попробуйте снова.';
+export const SIGNUP_DISABLED_MESSAGE = 'Регистрация на сайте пока недоступна. Создайте аккаунт в приложении Écoute Moi.';
+/**
+ * Sign-in never creates accounts, so an unknown email is reported without
+ * suggesting registration: a person who uses another sign-in method in the app
+ * must not be pushed into creating a second account.
+ */
+export const ACCOUNT_NOT_FOUND_MESSAGE = 'Аккаунт с такой почтой не найден. Проверьте адрес или откройте приложение Écoute Moi.';
 
 export function authErrorMessage(error: unknown): string {
   const message = rawMessage(error).toLowerCase();
@@ -27,7 +33,7 @@ export function authErrorMessage(error: unknown): string {
   // Checked before "cancelled": OAuth providers report these with the
   // generic `access_denied` error code.
   if (includesAny(message, ['signups not allowed', 'signup is disabled'])) {
-    return 'Аккаунт с таким email не найден. Выберите регистрацию.';
+    return ACCOUNT_NOT_FOUND_MESSAGE;
   }
   if (includesAny(message, ['user is banned', 'banned'])) {
     return 'Доступ к аккаунту ограничен. Обратитесь в поддержку.';
@@ -63,13 +69,13 @@ export function authErrorMessage(error: unknown): string {
     return 'Код неверный или его срок действия истёк. Запросите новый код.';
   }
   if (includesAny(message, ['signups not allowed', 'user not found'])) {
-    return 'Аккаунт с таким email не найден. Выберите регистрацию.';
+    return ACCOUNT_NOT_FOUND_MESSAGE;
   }
   if (includesAny(message, ['email not confirmed', 'email_not_confirmed'])) {
     return 'Подтвердите email кодом из письма.';
   }
   if (includesAny(message, ['already registered', 'user already exists', 'identity already exists'])) {
-    return 'Этот способ входа уже связан с другим аккаунтом. Автоматическое объединение отключено для вашей безопасности.';
+    return 'Этот способ входа уже связан с другим аккаунтом.';
   }
   if (includesAny(message, ['weak password', 'password should be', 'password must'])) {
     return 'Пароль должен содержать не менее 8 символов, буквы и цифры.';
@@ -115,7 +121,8 @@ export function isLocalValidationMessage(error: unknown): error is Error {
   return (
     error.message.startsWith('Введите') ||
     error.message.startsWith('Парол') ||
-    error.message.startsWith('Не удалось создать сессию')
+    error.message.startsWith('Не удалось создать сессию') ||
+    error.message === SIGNUP_DISABLED_MESSAGE
   );
 }
 

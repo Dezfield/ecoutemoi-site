@@ -42,9 +42,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           <p className="auth-motto">
             Слушать.<br />Слышать.<br /><em>Видеть.</em>
           </p>
-          <p className="auth-aside-text">
-            Один аккаунт для приложения и сайта. Войдите тем же способом, что и в приложении Écoute Moi.
-          </p>
+          <p className="auth-aside-text">Один аккаунт для приложения и сайта.</p>
         </div>
         <Waveform />
       </aside>
@@ -56,7 +54,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         </div>
         <div className="auth-card">{children}</div>
         <footer className="auth-footer">
-          <a href={config.links.terms}>Условия использования</a>
+          <a href={config.links.terms}>Пользовательское соглашение</a>
           <a href={config.links.privacy}>Конфиденциальность</a>
           <a href={config.links.support}>Поддержка</a>
         </footer>

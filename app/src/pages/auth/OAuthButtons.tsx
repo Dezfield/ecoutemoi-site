@@ -13,8 +13,9 @@ const providerLabels: Record<OAuthProvider, string> = {
 
 /**
  * Only providers explicitly enabled for the web build
- * (VITE_AUTH_OAUTH_PROVIDERS) are rendered, so the page never offers a
- * provider whose web redirect is not configured.
+ * (VITE_AUTH_OAUTH_PROVIDERS, and only while web signup is enabled — see
+ * config.ts) are rendered, so the page never offers a provider whose web
+ * redirect is not configured.
  */
 export function OAuthButtons({ nextPath }: { nextPath: string }) {
   const [busy, setBusy] = useState<OAuthProvider | null>(null);
@@ -53,28 +54,40 @@ export function OAuthButtons({ nextPath }: { nextPath: string }) {
   );
 }
 
-/** Honest note about sign-in methods that exist in the app but not yet on the web. */
+/**
+ * Sign-in methods that the web does not offer. The note does not promise that
+ * an email code opens the same account as another sign-in method: that holds
+ * only when this email is the one stored in that account.
+ */
+const oauthNames: Array<[OAuthProvider, string]> = [['apple', 'Apple'], ['google', 'Google']];
+
 export function UnavailableProvidersNote() {
   const missing = [
-    !config.oauthProviders.includes('apple') ? 'Apple' : null,
-    !config.oauthProviders.includes('google') ? 'Google' : null,
-    'VK',
-  ].filter(Boolean);
-  const list = missing.length > 1 ? `${missing.slice(0, -1).join(', ')} и ${missing[missing.length - 1]}` : missing[0];
+    'по номеру телефона',
+    ...oauthNames.filter(([provider]) => !config.oauthProviders.includes(provider)).map(([, name]) => `через ${name}`),
+    'через VK',
+  ];
+  const list = `${missing.slice(0, -1).join(', ')} и ${missing[missing.length - 1]}`;
   return (
     <p className="form-footnote">
-      Вход через {list} на сайте появится позже. Если вы регистрировались этим способом, откройте приложение
-      Écoute Moi или войдите по почте, привязанной к аккаунту.
+      Вход {list} на сайте пока недоступен. Если вы входите в приложение этими способами, пользуйтесь приложением
+      Écoute Moi: вход по коду на почту не обязательно откроет тот же аккаунт.
     </p>
   );
 }
 
+/**
+ * Age notice and links to the public documents. The Terms and the Privacy
+ * Policy on the public site are not approved yet, so the web does not state
+ * that continuing means accepting them; consent wording is a release blocker
+ * for web signup (docs/WEB_APP_DEPLOYMENT.md).
+ */
 export function LegalNote() {
   return (
     <p className="legal-note">
-      <span className="age-badge">18+</span> Только для совершеннолетних. Продолжая, вы принимаете{' '}
-      <a href={config.links.terms}>Условия использования</a> и{' '}
-      <a href={config.links.privacy}>Политику конфиденциальности</a>.
+      <span className="age-badge">18+</span> Только для совершеннолетних. Документы сервиса:{' '}
+      <a href={config.links.terms}>Пользовательское соглашение</a> и{' '}
+      <a href={config.links.privacy}>Политика конфиденциальности</a>.
     </p>
   );
 }

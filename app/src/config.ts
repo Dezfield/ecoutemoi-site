@@ -1,8 +1,23 @@
-import { isValidSupabaseUrl, normalizeBaseUrl, parseOAuthProviders } from './lib/env';
+import {
+  enabledOAuthProviders,
+  isValidSupabaseUrl,
+  normalizeBaseUrl,
+  parseEnabledFlag,
+  parseOAuthProviders,
+} from './lib/env';
 
 const env = import.meta.env;
 
 const publicSiteUrl = normalizeBaseUrl(env.VITE_PUBLIC_SITE_URL, 'https://ecoutemoi.ru');
+
+/**
+ * Web registration is off unless explicitly enabled. It must stay off for
+ * public production until the release blockers in docs/WEB_APP_DEPLOYMENT.md
+ * (approved Terms and Privacy Policy, product-approved 18+ flow, testing
+ * against the real Supabase project) are resolved. Sign-in of existing
+ * accounts does not depend on this flag.
+ */
+const signupEnabled = parseEnabledFlag(env.VITE_AUTH_SIGNUP_ENABLED);
 
 /**
  * Build-time configuration of the web app. Every VITE_* value is embedded in
@@ -14,7 +29,8 @@ export const config = {
   supabaseAnonKey: env.VITE_SUPABASE_ANON_KEY?.trim() ?? '',
   supabaseConfigured:
     isValidSupabaseUrl(env.VITE_SUPABASE_URL) && Boolean(env.VITE_SUPABASE_ANON_KEY?.trim()),
-  oauthProviders: parseOAuthProviders(env.VITE_AUTH_OAUTH_PROVIDERS),
+  signupEnabled,
+  oauthProviders: enabledOAuthProviders(parseOAuthProviders(env.VITE_AUTH_OAUTH_PROVIDERS), signupEnabled),
   publicSiteUrl,
   links: {
     home: `${publicSiteUrl}/`,

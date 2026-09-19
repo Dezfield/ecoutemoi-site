@@ -7,9 +7,10 @@ import { Notice } from '../../components/Notice';
 const RESEND_SECONDS = 60;
 
 /**
- * Email one-time-code sign-in / registration — the primary email flow of
- * Écoute Moi (same as mobile AuthFlow): no password is asked for.
- * `signup` allows Supabase to create the auth user; `login` does not.
+ * Email one-time-code sign-in / registration (Supabase signInWithOtp +
+ * verifyOtp, the email mechanism mobile main also uses); no password is asked
+ * for. `signup` allows Supabase to create the auth user and is rendered only
+ * when web signup is enabled; `login` never creates a user.
  */
 export function EmailCodeForm({ mode }: { mode: 'login' | 'signup' }) {
   const [email, setEmail] = useState('');

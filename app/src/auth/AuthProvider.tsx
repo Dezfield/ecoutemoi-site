@@ -61,16 +61,18 @@ function writeRecoveryFlag(active: boolean) {
 const classifiedStatuses: AuthStatus[] = ['onboarding_required', 'authenticated_profile_ready'];
 
 /**
- * Web AuthProvider. Mirrors mobile/src/auth/hooks/useAuth.tsx:
- * - the same status model;
- * - the same profile classification (`profiles` row + `dating_profiles.onboarding_complete`),
- *   read as the signed-in user under RLS (only own rows are visible).
- *
- * Web-specific differences:
- * - OAuth/email-link callbacks are completed on /auth/callback, not here;
- * - a failed profile check keeps the session and exposes `profileError`
- *   instead of pretending the user is signed out;
- * - token refreshes update the session without re-querying the profile.
+ * Web AuthProvider.
+ * - Session state comes from supabase-js (persisted in this browser).
+ * - Profile classification reads the own `profiles` row and
+ *   `dating_profiles.onboarding_complete` as the signed-in user under RLS
+ *   (mobile main migrations: profiles_select_allowed_people,
+ *   dating_profiles_select_self). onboarding_complete is the flag mobile main
+ *   also uses to decide whether the dating profile is complete
+ *   (src/services/dating.ts, src/features/dating/DatingExperience.tsx).
+ * - OAuth/email-link callbacks are completed on /auth/callback, not here.
+ * - A failed profile check keeps the session and exposes `profileError`
+ *   instead of pretending the user is signed out.
+ * - Token refreshes update the session without re-querying the profile.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(initialState);
@@ -168,7 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [classifySession]);
 
   const signOut = useCallback(async (notice?: string) => {
-    // scope 'local' — same as mobile: ends this browser's session only.
+    // scope 'local' (as mobile main signOutCloudSession()): ends this browser's session only.
     // supabase-js removes the local session even if the network call fails,
     // so the UI always returns to the signed-out state.
     const { error } = await requireSupabase().auth.signOut({ scope: 'local' });

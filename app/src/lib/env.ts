@@ -8,10 +8,11 @@ export type OAuthProvider = 'apple' | 'google';
 const SUPPORTED_OAUTH_PROVIDERS: readonly OAuthProvider[] = ['apple', 'google'];
 
 /**
- * Parses a comma-separated provider allowlist. Only providers that the web
- * client can actually run are accepted. VK is intentionally excluded: the
- * `vk-id-auth` Edge Function currently accepts only the mobile
- * `ecoutemoi://auth/vk` return URI.
+ * Parses a comma-separated provider allowlist. Only standard Supabase Auth
+ * providers that the web client can start with signInWithOAuth are accepted.
+ * VK is excluded: it is not a standard Supabase Auth provider, and
+ * ecoutemoi-mobile main contains no VK backend, so web VK sign-in is not
+ * implemented (see docs/WEB_BACKEND_MATRIX.md).
  */
 export function parseOAuthProviders(raw: string | undefined): OAuthProvider[] {
   if (!raw) return [];
@@ -20,6 +21,26 @@ export function parseOAuthProviders(raw: string | undefined): OAuthProvider[] {
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
   return SUPPORTED_OAUTH_PROVIDERS.filter((provider) => requested.includes(provider));
+}
+
+/**
+ * Strict opt-in flag: only the literal `true` (any case, surrounding spaces
+ * ignored) enables a feature. Empty, missing or any other value keeps it off,
+ * so a typo can never enable a feature in production.
+ */
+export function parseEnabledFlag(raw: string | undefined): boolean {
+  return raw?.trim().toLowerCase() === 'true';
+}
+
+/**
+ * OAuth providers that may be offered on the sign-in screen. Supabase creates
+ * a new auth user on the first OAuth sign-in with an unknown identity and
+ * signInWithOAuth has no equivalent of `shouldCreateUser: false`, so any web
+ * OAuth button is also a web registration path. OAuth therefore stays hidden
+ * while web signup is disabled.
+ */
+export function enabledOAuthProviders(providers: OAuthProvider[], signupEnabled: boolean): OAuthProvider[] {
+  return signupEnabled ? providers : [];
 }
 
 /**

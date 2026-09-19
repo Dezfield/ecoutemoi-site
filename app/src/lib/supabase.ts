@@ -3,9 +3,10 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from '../config';
 
 /**
- * The single Supabase client of the web app. It talks to the same Supabase
- * project as the iOS/Android app, so a person signs in to the same
- * `auth.users` identity and the same `profiles` / `dating_profiles` rows.
+ * The single Supabase client of the web app. It is configured with the
+ * Supabase project of the iOS/Android app (VITE_SUPABASE_URL), so a person
+ * signs in to the same `auth.users` identity and the same `profiles` /
+ * `dating_profiles` rows.
  *
  * - Only the publishable (anon) key is used — never service_role. Every
  *   query runs as the signed-in user and is subject to the existing RLS

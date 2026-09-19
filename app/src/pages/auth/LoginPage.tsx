@@ -36,12 +36,13 @@ export function LoginPage() {
           <EmailCodeForm mode="login" />
           <UnavailableProvidersNote />
           <div className="auth-links">
-            <p>
-              Нет аккаунта? <Link to="/signup" state={state}>Создать аккаунт</Link>
-            </p>
-            <p>
-              <Link to="/forgot-password">Восстановить пароль старого аккаунта</Link>
-            </p>
+            {config.signupEnabled ? (
+              <p>
+                Нет аккаунта? <Link to="/signup" state={state}>Создать аккаунт</Link>
+              </p>
+            ) : (
+              <p>Нет аккаунта? Создайте его в приложении Écoute Moi.</p>
+            )}
           </div>
           <LegalNote />
         </>

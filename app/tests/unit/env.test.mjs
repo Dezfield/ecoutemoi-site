@@ -1,12 +1,34 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { isValidSupabaseUrl, normalizeBaseUrl, parseOAuthProviders } from '../../src/lib/env.ts';
+import {
+  enabledOAuthProviders,
+  isValidSupabaseUrl,
+  normalizeBaseUrl,
+  parseEnabledFlag,
+  parseOAuthProviders,
+} from '../../src/lib/env.ts';
 
-test('OAuth allowlist keeps only web-capable providers', () => {
+test('OAuth allowlist keeps only web-capable providers (never VK)', () => {
   assert.deepEqual(parseOAuthProviders(undefined), []);
   assert.deepEqual(parseOAuthProviders(''), []);
   assert.deepEqual(parseOAuthProviders(' Google , apple ,vk,github'), ['apple', 'google']);
+});
+
+test('signup flag is strict opt-in: only "true" enables it', () => {
+  assert.equal(parseEnabledFlag(undefined), false);
+  assert.equal(parseEnabledFlag(''), false);
+  assert.equal(parseEnabledFlag('false'), false);
+  assert.equal(parseEnabledFlag('1'), false);
+  assert.equal(parseEnabledFlag('yes'), false);
+  assert.equal(parseEnabledFlag('ture'), false);
+  assert.equal(parseEnabledFlag(' TRUE '), true);
+  assert.equal(parseEnabledFlag('true'), true);
+});
+
+test('OAuth providers are offered only while web signup is enabled', () => {
+  assert.deepEqual(enabledOAuthProviders(['google'], false), []);
+  assert.deepEqual(enabledOAuthProviders(['apple', 'google'], true), ['apple', 'google']);
 });
 
 test('base URLs: https or loopback http only, no credentials/query', () => {

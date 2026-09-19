@@ -13,14 +13,14 @@ export function PrivacyPage() {
   return (
     <>
       <PageHeader eyebrow="Мой аккаунт" title="Конфиденциальность">
-        <p>Настройки видимости вашего профиля. Юридический документ — в разделе «Документы».</p>
+        <p>Настройки видимости вашего профиля. Документы — в разделе «Документы».</p>
       </PageHeader>
 
       <section className="panel" aria-labelledby="by-design-title">
         <h2 id="by-design-title" className="panel-title">Приватность по замыслу</h2>
         <p className="panel-text">
-          Имя и фотографии скрыты до взаимного Отклика. Для подбора используется город, но не точные координаты.
-          Содержимое личных чатов не анализируется для совместимости.
+          Анкета и фотографии открываются другому человеку после взаимного Отклика. В карточке указывается город, а не
+          точные координаты.
         </p>
       </section>
 
@@ -43,7 +43,7 @@ export function PrivacyPage() {
 
       <section className="panel" aria-labelledby="policy-title">
         <h2 id="policy-title" className="panel-title">Политика конфиденциальности</h2>
-        <p className="panel-text">Как Écoute Moi обрабатывает данные — в опубликованном документе.</p>
+        <p className="panel-text">Политика конфиденциальности размещается на сайте Écoute Moi.</p>
         <a className="button button-secondary" href={config.links.privacy}>Открыть политику конфиденциальности</a>
       </section>
     </>

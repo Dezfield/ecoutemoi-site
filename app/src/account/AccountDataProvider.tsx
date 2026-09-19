@@ -2,12 +2,12 @@ import { createContext, type ReactNode, useContext } from 'react';
 
 import { useAuth } from '../auth/AuthProvider';
 import { type AsyncResult, useAsync } from '../lib/useAsync';
-import { accountErrorMessage, loadAccountSummary, loadSubscription } from './api';
-import type { AccountSummary, StoreSubscription } from './types';
+import { accountErrorMessage, loadAccountSummary, loadEntitlement } from './api';
+import type { AccountSummary, Entitlement } from './types';
 
 type AccountData = {
   summary: AsyncResult<AccountSummary>;
-  subscription: AsyncResult<StoreSubscription>;
+  entitlement: AsyncResult<Entitlement>;
 };
 
 const AccountDataContext = createContext<AccountData | null>(null);
@@ -26,8 +26,8 @@ export function AccountDataProvider({ children }: { children: ReactNode }) {
     accountErrorMessage,
     [userId, email, profileState],
   );
-  const subscription = useAsync(loadSubscription, accountErrorMessage, [userId]);
-  return <AccountDataContext.Provider value={{ summary, subscription }}>{children}</AccountDataContext.Provider>;
+  const entitlement = useAsync(loadEntitlement, accountErrorMessage, [userId]);
+  return <AccountDataContext.Provider value={{ summary, entitlement }}>{children}</AccountDataContext.Provider>;
 }
 
 export function useAccountData(): AccountData {

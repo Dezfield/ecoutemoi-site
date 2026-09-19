@@ -1,7 +1,7 @@
 import type { Session, User } from '@supabase/supabase-js';
 
 /**
- * Auth statuses — mirrors the mobile app's AuthStatus type.
+ * Auth statuses of the web app.
  * - initializing: session not yet loaded from storage
  * - unauthenticated: no active session
  * - authenticated: session exists; the profile check is in progress or failed
@@ -19,22 +19,18 @@ export type AuthStatus =
   | 'authenticated_profile_ready'
   | 'password_recovery';
 
-export type LoginProvider = 'apple' | 'google' | 'vk' | 'email';
+export type LoginProvider = 'email' | 'phone' | 'apple' | 'google' | 'vk';
+
+/**
+ * `unknown` is used for a method whose state cannot be read from Supabase
+ * Auth identities (VK), so the page never claims it is connected or not.
+ */
+export type LoginMethodState = 'connected' | 'not_connected' | 'unknown';
 
 export type LoginMethod = {
   provider: LoginProvider;
-  connected: boolean;
-  identityId: string | null;
+  state: LoginMethodState;
   label: string | null;
-};
-
-export type AccountSession = {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  userAgent: string | null;
-  ipAddress: string | null;
-  current: boolean;
 };
 
 export type AuthState = {

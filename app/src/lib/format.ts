@@ -65,17 +65,6 @@ export function initials(name: string | null | undefined): string {
   );
 }
 
-/** Mirrors the mobile Account Center device label. */
-export function sessionDeviceLabel(userAgent: string | null | undefined): string {
-  if (!userAgent) return 'Неизвестное устройство';
-  if (/iphone|ipad/i.test(userAgent)) return 'iPhone или iPad';
-  if (/android/i.test(userAgent)) return 'Android';
-  if (/windows/i.test(userAgent)) return 'Windows';
-  if (/macintosh|mac os/i.test(userAgent)) return 'Mac';
-  if (/linux/i.test(userAgent)) return 'Linux';
-  return 'Браузер или приложение';
-}
-
 export function formatDuration(seconds: number | null | undefined): string {
   if (!seconds || !Number.isFinite(seconds) || seconds < 0) return '—';
   const total = Math.round(seconds);

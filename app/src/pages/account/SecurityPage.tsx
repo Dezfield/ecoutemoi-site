@@ -1,170 +1,75 @@
-import { type FormEvent, useId, useState } from 'react';
+import { useState } from 'react';
 
-import {
-  accountErrorMessage,
-  appealErrorMessage,
-  loadActiveSessions,
-  loadSafetyCenter,
-  signOutOtherSessions,
-  submitAppeal,
-} from '../../account/api';
-import { appealLabels, reportCategoryLabels, reportLabels, sanctionLabels } from '../../account/labels';
-import type { SafetySanction } from '../../account/types';
+import { accountErrorMessage, loadAccountRestriction, signOutOtherSessions } from '../../account/api';
+import { restrictionLabels } from '../../account/labels';
 import { useAuth } from '../../auth/AuthProvider';
 import { AsyncState } from '../../components/AsyncState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Notice } from '../../components/Notice';
 import { PageHeader } from '../../components/PageHeader';
-import { formatDateTime, sessionDeviceLabel } from '../../lib/format';
+import { config } from '../../config';
+import { formatDateTime } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 
-function AppealForm({ sanction, onSubmitted }: { sanction: SafetySanction; onSubmitted: () => void }) {
-  const [reason, setReason] = useState('');
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const fieldId = useId();
-  const hintId = useId();
-
-  const validate = (event: FormEvent) => {
-    event.preventDefault();
-    const length = reason.trim().length;
-    if (length < 20 || length > 1500) {
-      setError('Опишите ситуацию текстом от 20 до 1500 символов.');
-      return;
-    }
-    setError(null);
-    setConfirming(true);
-  };
-
-  const send = async () => {
-    setBusy(true);
-    try {
-      await submitAppeal(sanction.id, reason);
-      setReason('');
-      setConfirming(false);
-      onSubmitted();
-    } catch (nextError) {
-      setConfirming(false);
-      setError(appealErrorMessage(nextError));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form className="form appeal-form" onSubmit={validate} noValidate>
-      <h3 className="panel-subtitle">Не согласны с решением?</h3>
-      <div className="field">
-        <label htmlFor={fieldId}>Что важно учесть при повторной проверке?</label>
-        <textarea
-          id={fieldId}
-          rows={5}
-          maxLength={1500}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          aria-describedby={hintId}
-          aria-invalid={Boolean(error)}
-        />
-        <p id={hintId} className="field-hint">
-          Опишите контекст спокойно и по существу, от 20 до 1500 символов. Обращение проверит другой сотрудник, если
-          это возможно.
-        </p>
-      </div>
-      <button type="submit" className="button button-secondary">Отправить обращение</button>
-      {error ? <Notice tone="error">{error}</Notice> : null}
-      <ConfirmDialog
-        open={confirming}
-        title="Отправить обращение?"
-        confirmLabel="Отправить"
-        busy={busy}
-        onConfirm={() => void send()}
-        onCancel={() => setConfirming(false)}
-      >
-        <p>Обращение попадёт в отдельную очередь модерации. Для одного ограничения можно отправить одно обращение.</p>
-      </ConfirmDialog>
-    </form>
-  );
-}
-
-function SafetyStatus() {
+/**
+ * Account status from get_my_account_restriction(): the caller's own active
+ * suspension or ban. The RPC returns no sanction id, so the web offers no
+ * appeal form; the appeal RPC needs that id and the user must never type it.
+ */
+function AccountStatus() {
   const { user } = useAuth();
-  const center = useAsync(loadSafetyCenter, accountErrorMessage, [user?.id]);
-  const [notice, setNotice] = useState<string | null>(null);
+  const restriction = useAsync(
+    // useAsync treats null as "no data yet", so the result is wrapped.
+    async () => ({ current: await loadAccountRestriction() }),
+    accountErrorMessage,
+    [user?.id],
+  );
   return (
     <section className="panel" aria-labelledby="status-title">
       <h2 id="status-title" className="panel-title">Статус аккаунта</h2>
-      <AsyncState loading={center.loading} error={center.error} data={center.data} onRetry={center.reload}>
-        {(data) => (
-          <>
+      <AsyncState loading={restriction.loading} error={restriction.error} data={restriction.data} onRetry={restriction.reload}>
+        {({ current }) =>
+          current ? (
+            <>
+              <p className="panel-text">
+                <span className="status-pill status-warn">{restrictionLabels[current.kind]}</span>
+              </p>
+              {current.reason ? <p className="panel-text">{current.reason}</p> : null}
+              <p className="panel-note">
+                {current.expiresAt ? `Действует до: ${formatDateTime(current.expiresAt)}` : 'Срок окончания не указан.'}
+              </p>
+              <p className="panel-text">
+                Обжаловать ограничение через сайт пока нельзя. Каналы связи с Écoute Moi — на{' '}
+                <a href={config.links.support}>странице поддержки</a>.
+              </p>
+            </>
+          ) : (
             <p className="panel-text">
-              <span className={`status-pill ${data.activeSanction ? 'status-warn' : 'status-ok'}`}>
-                {data.activeSanction ? sanctionLabels[data.activeSanction.kind] : 'Ограничений нет'}
-              </span>
+              <span className="status-pill status-ok">Активных ограничений нет</span>
             </p>
-            {data.activeSanction ? (
-              <>
-                <p className="panel-text">{data.activeSanction.reason || 'Причина не указана.'}</p>
-                <p className="panel-note">
-                  {data.activeSanction.expiresAt
-                    ? `Действует до: ${formatDateTime(data.activeSanction.expiresAt)}`
-                    : 'Срок действия не указан.'}
-                </p>
-                {data.activeSanction.appeal ? (
-                  <p className="panel-text">
-                    Обращение: {appealLabels[data.activeSanction.appeal.status]} · отправлено{' '}
-                    {formatDateTime(data.activeSanction.appeal.createdAt)}
-                  </p>
-                ) : (
-                  <AppealForm
-                    sanction={data.activeSanction}
-                    onSubmitted={() => {
-                      setNotice('Обращение отправлено. Статус появится здесь после рассмотрения.');
-                      center.reload();
-                    }}
-                  />
-                )}
-              </>
-            ) : null}
-            {notice ? <Notice tone="success">{notice}</Notice> : null}
-            <h3 className="panel-subtitle">Мои жалобы</h3>
-            {data.recentReports.length ? (
-              <ul className="list">
-                {data.recentReports.map((report) => (
-                  <li key={report.id} className="list-row">
-                    <span className="list-main">
-                      <span className="list-title">{reportCategoryLabels[report.category] ?? reportCategoryLabels.other}</span>
-                      <span className="list-meta">{formatDateTime(report.createdAt)}</span>
-                    </span>
-                    <span className="status-pill">{reportLabels[report.status]}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="panel-text">Вы ещё не отправляли жалоб.</p>
-            )}
-          </>
-        )}
+          )
+        }
       </AsyncState>
     </section>
   );
 }
 
-function ActiveSessions() {
-  const { user } = useAuth();
-  const sessions = useAsync(loadActiveSessions, accountErrorMessage, [user?.id]);
+/**
+ * No backend in ecoutemoi-mobile main lists a user's sessions, so the web
+ * shows no device list or session count. Ending the other sessions uses the
+ * standard Supabase Auth logout with scope `others`.
+ */
+function OtherSessions() {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
-  const others = sessions.data?.filter((session) => !session.current).length ?? 0;
 
   const endOthers = async () => {
     setBusy(true);
     setMessage(null);
     try {
       await signOutOtherSessions();
-      setMessage({ tone: 'success', text: 'Другие сессии завершены. На остальных устройствах потребуется повторный вход.' });
-      sessions.reload();
+      setMessage({ tone: 'success', text: 'Вход на других устройствах и в других браузерах завершён.' });
     } catch (error) {
       setMessage({ tone: 'error', text: accountErrorMessage(error) });
     } finally {
@@ -175,43 +80,20 @@ function ActiveSessions() {
 
   return (
     <section className="panel" aria-labelledby="sessions-title">
-      <div className="panel-head">
-        <h2 id="sessions-title" className="panel-title">Активные сессии</h2>
-        <button type="button" className="button button-ghost button-small" onClick={sessions.reload} disabled={sessions.loading}>
-          Обновить
-        </button>
-      </div>
-      <p className="panel-text">Устройства и браузеры, на которых сохранён вход в ваш аккаунт.</p>
-      <AsyncState loading={sessions.loading} error={sessions.error} data={sessions.data} onRetry={sessions.reload}>
-        {(list) =>
-          list.length ? (
-            <ul className="list">
-              {list.map((session) => (
-                <li key={session.id} className={`list-row ${session.current ? 'list-row-current' : ''}`}>
-                  <span className="list-main">
-                    <span className="list-title">
-                      {sessionDeviceLabel(session.userAgent)}
-                      {session.current ? <span className="status-pill status-ok">Этот браузер</span> : null}
-                    </span>
-                    <span className="list-meta">Последняя активность: {formatDateTime(session.updatedAt)}</span>
-                    {session.ipAddress ? <span className="list-meta">IP: {session.ipAddress}</span> : null}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="panel-text">Активные сессии не найдены.</p>
-          )
-        }
-      </AsyncState>
+      <h2 id="sessions-title" className="panel-title">Активные сессии</h2>
+      <p className="panel-text">Просмотр активных сессий на сайте пока недоступен.</p>
+      <p className="panel-text">
+        Можно завершить вход на всех других устройствах и в других браузерах, включая приложение. Этот браузер
+        останется в аккаунте.
+      </p>
       <div className="button-row">
         <button
           type="button"
           className="button button-danger-outline"
           onClick={() => setConfirming(true)}
-          disabled={!others || busy}
+          disabled={busy}
         >
-          Завершить другие сессии{others ? ` · ${others}` : ''}
+          Завершить другие сессии
         </button>
       </div>
       <p className="panel-note">
@@ -228,7 +110,7 @@ function ActiveSessions() {
         onConfirm={() => void endOthers()}
         onCancel={() => setConfirming(false)}
       >
-        <p>На других устройствах потребуется войти снова. Текущая сессия останется активной.</p>
+        <p>На других устройствах, включая приложение, потребуется войти снова. Текущая сессия останется активной.</p>
       </ConfirmDialog>
     </section>
   );
@@ -238,15 +120,15 @@ export function SecurityPage() {
   return (
     <>
       <PageHeader eyebrow="Безопасность" title="Безопасность">
-        <p>Статус аккаунта, обращения и устройства, на которых выполнен вход.</p>
+        <p>Статус аккаунта и завершение входа на других устройствах.</p>
       </PageHeader>
-      <SafetyStatus />
-      <ActiveSessions />
+      <AccountStatus />
+      <OtherSessions />
       <section className="panel panel-muted" aria-labelledby="protection-title">
         <h2 id="protection-title" className="panel-title">Защита в общении</h2>
         <p className="panel-text">
-          В каждом разговоре доступны жалоба, блокировка, ограничение контакта и инструменты безопасной встречи. Точная
-          геопозиция не отображается в публичной карточке.
+          В разговорах в приложении доступны жалоба, блокировка, ограничение контакта и инструменты безопасной встречи.
+          Точная геопозиция не отображается в публичной карточке.
         </p>
       </section>
     </>

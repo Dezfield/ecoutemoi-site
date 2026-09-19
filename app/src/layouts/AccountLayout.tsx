@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useAccountData } from '../account/AccountDataProvider';
-import { planLabel } from '../account/labels';
+import { entitlementLabel } from '../account/labels';
 import { useAuth } from '../auth/AuthProvider';
 import { Wordmark } from '../components/BrandMark';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -14,10 +14,10 @@ import { accountNavigation } from './navigation';
 
 function Identity() {
   const { user } = useAuth();
-  const { summary, subscription } = useAccountData();
+  const { summary, entitlement } = useAccountData();
   const name = summary.data?.displayName ?? '';
   const photoUrl = summary.data?.photoUrl ?? null;
-  const plan = subscription.data ? planLabel(subscription.data.tier, subscription.data.active) : null;
+  const plan = entitlement.data?.active ? entitlementLabel(entitlement.data) : null;
   return (
     <div className="identity">
       <span className="avatar avatar-small" aria-hidden="true">
@@ -73,9 +73,9 @@ function AccountNav({ onSignOut }: { onSignOut: () => void }) {
             </button>
           </li>
           <li>
-            <NavLink to="/account/delete" className="nav-link nav-link-danger">
+            <NavLink to="/account/delete" className="nav-link">
               <Icon name="trash" />
-              <span>Удалить аккаунт</span>
+              <span>Удаление аккаунта</span>
             </NavLink>
           </li>
         </ul>
@@ -219,7 +219,7 @@ export function AccountLayout() {
             <Notice tone="warning" title="Завершите создание профиля в приложении Écoute Moi">
               <p>
                 Анкета, аудиописьмо и фотографии создаются в мобильном приложении. Аккаунт уже работает: здесь можно
-                управлять входом, уведомлениями и безопасностью.
+                посмотреть способы входа, статус аккаунта и заблокированных пользователей.
               </p>
             </Notice>
           ) : null}

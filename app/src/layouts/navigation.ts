@@ -27,7 +27,7 @@ export const accountNavigation: NavGroup[] = [
   },
   {
     title: 'Подписка',
-    items: [{ kind: 'route', to: '/account/subscription', label: 'Premium / Exclusive', icon: 'star' }],
+    items: [{ kind: 'route', to: '/account/subscription', label: 'Premium', icon: 'star' }],
   },
   {
     title: 'Безопасность',

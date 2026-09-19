@@ -1,17 +1,14 @@
 /**
- * Display labels ported from the mobile app (src/services/dating.ts,
- * src/content/geography.ts, features/safety/SafetyAccountPanel.tsx,
- * features/dating/honestPremium.ts) so both clients describe the same data
- * with the same words. Unknown codes fall back to a neutral value.
+ * Display labels for codes returned by the backend. The dating labels repeat
+ * the option labels of ecoutemoi-mobile main (src/services/dating.ts and
+ * src/content/geography.ts) so both clients describe the same data with the
+ * same words. Unknown codes fall back to a neutral value.
  */
-import type { AppealStatus, PremiumTier, ReportStatus, SanctionKind } from './types';
+import type { AccountRestriction, Entitlement } from './types';
 
 const gender: Record<string, string> = {
   woman: 'Женщина',
   man: 'Мужчина',
-  nonbinary: 'Небинарная идентичность',
-  other: 'Другое',
-  prefer_not_to_say: 'Не указано',
 };
 
 const lookingFor: Record<string, string> = { woman: 'Женщин', man: 'Мужчин', any: 'Пол не важен' };
@@ -93,48 +90,17 @@ export const labels = {
   language: (value: string) => (value === 'ru' ? 'Русский' : value === 'en' ? 'English' : value.toUpperCase()),
 };
 
-export const sanctionLabels: Record<SanctionKind, string> = {
-  warning: 'Предупреждение',
-  suspended: 'Временное ограничение',
+/**
+ * Tier names as the backend reports them (get_my_entitlement.tier). Mobile
+ * main shows the same names: "Premium" and "Founder".
+ */
+export function entitlementLabel(entitlement: Entitlement): 'Free' | 'Premium' | 'Founder' {
+  if (!entitlement.active) return 'Free';
+  return entitlement.tier === 'founder' ? 'Founder' : 'Premium';
+}
+
+/** Wording of mobile main adminAccountStatusLabel(): suspended → «Приостановлен», banned → «Заблокирован». */
+export const restrictionLabels: Record<AccountRestriction['kind'], string> = {
+  suspended: 'Аккаунт приостановлен',
   banned: 'Аккаунт заблокирован',
 };
-
-export const appealLabels: Record<AppealStatus, string> = {
-  pending: 'Ожидает рассмотрения',
-  reviewing: 'Рассматривается',
-  upheld: 'Решение оставлено в силе',
-  overturned: 'Ограничение отменено',
-};
-
-export const reportLabels: Record<ReportStatus, string> = {
-  open: 'Получена',
-  reviewing: 'На рассмотрении',
-  actioned: 'Меры приняты',
-  dismissed: 'Рассмотрена',
-};
-
-export const reportCategoryLabels: Record<string, string> = {
-  spam: 'Спам или мошенничество',
-  harassment: 'Оскорбления или преследование',
-  impersonation: 'Выдаёт себя за другого',
-  inappropriate: 'Неприемлемый контент',
-  other: 'Другая причина',
-};
-
-/** honestPremium.publicPremiumPlan: founder → Exclusive, active premium → Premium. */
-export function planLabel(tier: PremiumTier, active: boolean): 'Бесплатный' | 'Premium' | 'Exclusive' {
-  if (!active) return 'Бесплатный';
-  return tier === 'founder' ? 'Exclusive' : 'Premium';
-}
-
-/** honestPremium.publicPremiumPlanDescription — unchanged mobile copy. */
-export function planDescription(tier: PremiumTier, active: boolean): string {
-  const plan = planLabel(tier, active);
-  if (plan === 'Exclusive') {
-    return 'Статус раннего участника включает Premium. Новые возможности Exclusive появятся после запуска; они не влияют на место карточки в подборе.';
-  }
-  if (plan === 'Premium') {
-    return 'Дополнительное удобство, приватность и контроль — без покупки взаимности или ранжирования.';
-  }
-  return 'Полное знакомство и безопасность доступны без подписки.';
-}

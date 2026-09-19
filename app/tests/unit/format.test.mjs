@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { ageFromBirthDate, formatDuration, initials, sessionDeviceLabel, yearsLabel } from '../../src/lib/format.ts';
-import { planDescription, planLabel } from '../../src/account/labels.ts';
+import { ageFromBirthDate, formatDuration, initials, yearsLabel } from '../../src/lib/format.ts';
+import { entitlementLabel, labels, restrictionLabels } from '../../src/account/labels.ts';
 
 test('age from birth date', () => {
   const now = new Date(2026, 8, 18);
@@ -21,18 +21,30 @@ test('Russian plural for years', () => {
   assert.equal(yearsLabel(34), '34 года');
 });
 
-test('initials, durations and device labels', () => {
+test('initials and durations', () => {
   assert.equal(initials('анна мария петрова'), 'АМ');
   assert.equal(initials(''), 'É');
   assert.equal(formatDuration(32), '0:32');
   assert.equal(formatDuration(null), '—');
-  assert.equal(sessionDeviceLabel('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)'), 'iPhone или iPad');
-  assert.equal(sessionDeviceLabel(null), 'Неизвестное устройство');
 });
 
-test('plan labels follow mobile honestPremium mapping', () => {
-  assert.equal(planLabel('founder', true), 'Exclusive');
-  assert.equal(planLabel('premium', true), 'Premium');
-  assert.equal(planLabel('premium', false), 'Бесплатный');
-  assert.match(planDescription('free', false), /без подписки/);
+test('entitlement labels use only get_my_entitlement tiers', () => {
+  assert.equal(entitlementLabel({ tier: 'founder', active: true, premiumUntil: null }), 'Founder');
+  assert.equal(entitlementLabel({ tier: 'premium', active: true, premiumUntil: '2026-12-31T00:00:00Z' }), 'Premium');
+  assert.equal(entitlementLabel({ tier: 'free', active: false, premiumUntil: '2026-01-01T00:00:00Z' }), 'Free');
+  assert.equal(entitlementLabel({ tier: 'premium', active: false, premiumUntil: null }), 'Free');
+});
+
+test('restriction labels follow mobile account status wording', () => {
+  assert.equal(restrictionLabels.suspended, 'Аккаунт приостановлен');
+  assert.equal(restrictionLabels.banned, 'Аккаунт заблокирован');
+});
+
+test('dating labels: known codes from mobile main, unknown codes are not guessed', () => {
+  assert.equal(labels.gender('woman'), 'Женщина');
+  assert.equal(labels.gender('nonbinary'), null);
+  assert.equal(labels.goal('serious'), 'Серьёзные отношения');
+  assert.equal(labels.country('RU'), 'Россия');
+  assert.equal(labels.country('XX'), null);
+  assert.equal(labels.prompt('why_here'), 'Почему вы здесь?');
 });

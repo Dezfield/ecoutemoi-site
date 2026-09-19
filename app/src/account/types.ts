@@ -38,58 +38,28 @@ export type AccountSummary = {
   photoUrl: string | null;
 };
 
-export type StoreSubscription = {
+/**
+ * Row of public.get_my_entitlement() (ecoutemoi-mobile main,
+ * supabase/migrations/20260820_chat_product_premium.sql). The RPC reports only
+ * the tier, whether it is active and the premium end date — nothing about how
+ * the status was obtained.
+ */
+export type Entitlement = {
   tier: PremiumTier;
   active: boolean;
+  /** End of a `premium` tier; null for founder and free without history. */
   premiumUntil: string | null;
-  source: 'admin' | 'store' | 'none' | string;
-  storePlatform: string | null;
+};
+
+/**
+ * Row of public.get_my_account_restriction() (ecoutemoi-mobile main,
+ * supabase/migrations/20260810_trust_safety_push.sql): the caller's own active
+ * suspension or ban. The RPC does not return the sanction id.
+ */
+export type AccountRestriction = {
+  kind: 'suspended' | 'banned';
+  reason: string;
+  expiresAt: string | null;
 };
 
 export type BlockedUser = { id: string; name: string; blockedAt: string };
-
-export type NotificationDeliveryMode = 'instant' | 'hourly' | 'daily';
-
-export type NotificationPreferences = {
-  messagesEnabled: boolean;
-  datingEnabled: boolean;
-  productEnabled: boolean;
-  quietHoursEnabled: boolean;
-  quietStart: string;
-  quietEnd: string;
-  timezone: string;
-  deliveryMode: NotificationDeliveryMode;
-  updatedAt: string | null;
-};
-
-export type SanctionKind = 'warning' | 'suspended' | 'banned';
-export type AppealStatus = 'pending' | 'reviewing' | 'upheld' | 'overturned';
-export type ReportStatus = 'open' | 'reviewing' | 'actioned' | 'dismissed';
-
-export type SafetyAppeal = {
-  id: string;
-  status: AppealStatus;
-  createdAt: string;
-};
-
-export type SafetySanction = {
-  id: string;
-  kind: SanctionKind;
-  reason: string;
-  startsAt: string;
-  expiresAt: string | null;
-  appeal: SafetyAppeal | null;
-};
-
-export type SafetyReport = {
-  id: string;
-  category: string;
-  status: ReportStatus;
-  createdAt: string;
-};
-
-export type SafetyCenter = {
-  activeSanction: SafetySanction | null;
-  recentReports: SafetyReport[];
-  hasMoreReports: boolean;
-};

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 
-import { accountErrorMessage, exportAccountData, loadLoginMethods } from '../../account/api';
+import { accountErrorMessage, loadLoginMethods } from '../../account/api';
 import { useAuth } from '../../auth/AuthProvider';
-import type { LoginProvider } from '../../auth/types';
+import type { LoginMethodState, LoginProvider } from '../../auth/types';
 import { AsyncState } from '../../components/AsyncState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Notice } from '../../components/Notice';
@@ -12,46 +12,25 @@ import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 
 const providerLabels: Record<LoginProvider, string> = {
+  email: 'Почта',
+  phone: 'Телефон',
   apple: 'Apple ID',
   google: 'Google',
   vk: 'VK ID',
-  email: 'Почта',
 };
 
-function downloadJson(payload: unknown, fileName: string) {
-  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = fileName;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+const stateLabels: Record<LoginMethodState, string> = {
+  connected: 'Подключено',
+  not_connected: 'Не подключено',
+  unknown: 'Нет данных',
+};
 
 export function SettingsPage() {
   const { user, signOut } = useAuth();
   const methods = useAsync(loadLoginMethods, accountErrorMessage, [user?.id]);
-  const [exporting, setExporting] = useState(false);
-  const [exportMessage, setExportMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-
-  const exportData = async () => {
-    if (exporting) return;
-    setExporting(true);
-    setExportMessage(null);
-    try {
-      const data = await exportAccountData();
-      downloadJson(data, `ecoute-moi-data-${new Date().toISOString().slice(0, 10)}.json`);
-      setExportMessage({ tone: 'success', text: 'Файл с копией данных сохранён.' });
-    } catch (error) {
-      setExportMessage({ tone: 'error', text: accountErrorMessage(error) });
-    } finally {
-      setExporting(false);
-    }
-  };
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   const performSignOut = async () => {
     setSigningOut(true);
@@ -61,7 +40,7 @@ export function SettingsPage() {
     } catch {
       setSigningOut(false);
       setConfirmSignOut(false);
-      setExportMessage({ tone: 'error', text: 'Не удалось выйти. Проверьте соединение и попробуйте ещё раз.' });
+      setSignOutError('Не удалось выйти. Проверьте соединение и попробуйте ещё раз.');
     }
   };
 
@@ -70,7 +49,7 @@ export function SettingsPage() {
   return (
     <>
       <PageHeader eyebrow="Мой аккаунт" title="Аккаунт и вход">
-        <p>Один аккаунт Écoute Moi для приложения и сайта.</p>
+        <p>Данные входа в ваш аккаунт Écoute Moi.</p>
       </PageHeader>
 
       <section className="panel" aria-labelledby="account-title">
@@ -97,7 +76,8 @@ export function SettingsPage() {
       <section className="panel" aria-labelledby="methods-title">
         <h2 id="methods-title" className="panel-title">Способы входа</h2>
         <p className="panel-text">
-          Все способы ведут в один и тот же аккаунт. Совпадающий email никогда не объединяет аккаунты автоматически.
+          Способы входа относятся к одному аккаунту, только если они уже связаны с ним. Управление способами входа
+          выполняется в приложении.
         </p>
         <AsyncState loading={methods.loading} error={methods.error} data={methods.data} onRetry={methods.reload}>
           {(list) => (
@@ -107,43 +87,37 @@ export function SettingsPage() {
                   <span className="list-main">
                     <span className="list-title">{providerLabels[method.provider]}</span>
                     {method.label ? <span className="list-meta">{method.label}</span> : null}
+                    {method.state === 'unknown' ? (
+                      <span className="list-meta">Сайт не может проверить этот способ входа.</span>
+                    ) : null}
                   </span>
-                  <span className={`status-pill ${method.connected ? 'status-ok' : ''}`}>
-                    {method.connected ? 'Подключено' : 'Не подключено'}
+                  <span className={`status-pill ${method.state === 'connected' ? 'status-ok' : ''}`}>
+                    {stateLabels[method.state]}
                   </span>
                 </li>
               ))}
             </ul>
           )}
         </AsyncState>
-        <p className="panel-note">
-          Подключить или отключить способ входа можно в приложении: Профиль → Настройки аккаунта → Способы входа.
-        </p>
       </section>
 
       <section className="panel" aria-labelledby="export-title">
         <h2 id="export-title" className="panel-title">Копия моих данных</h2>
-        <p className="panel-text">
-          JSON-файл с данными аккаунта, карточкой, настройками и созданным вами контентом. Чужие сообщения и внутренние
-          материалы модерации не включаются.
-        </p>
-        <button type="button" className="button button-secondary" onClick={() => void exportData()} disabled={exporting}>
-          {exporting ? 'Готовим файл…' : 'Скачать копию данных'}
-        </button>
-        {exportMessage ? <Notice tone={exportMessage.tone}>{exportMessage.text}</Notice> : null}
+        <p className="panel-text">Экспорт данных через веб пока недоступен.</p>
       </section>
 
       <section className="panel" aria-labelledby="session-title">
         <h2 id="session-title" className="panel-title">Выход и удаление</h2>
         <p className="panel-text">
-          Выход завершает вход только в этом браузере. Удаление аккаунта — отдельное и необратимое действие.
+          Выход завершает вход только в этом браузере. Удаление аккаунта через сайт пока недоступно.
         </p>
         <div className="button-row">
           <button type="button" className="button button-secondary" onClick={() => setConfirmSignOut(true)}>
             Выйти
           </button>
-          <Link to="/account/delete" className="button button-danger-outline">Удалить аккаунт</Link>
+          <Link to="/account/delete" className="button button-ghost">Удаление аккаунта</Link>
         </div>
+        {signOutError ? <Notice tone="error">{signOutError}</Notice> : null}
       </section>
 
       <ConfirmDialog

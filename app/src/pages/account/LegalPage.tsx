@@ -10,12 +10,12 @@ const documents = [
   { href: config.links.support, title: 'Поддержка' },
 ];
 
-/** Links to the documents published on the public site; nothing is copied here. */
+/** Links to the pages of the public site; nothing is copied here. */
 export function LegalPage() {
   return (
     <>
       <PageHeader eyebrow="Информация" title="Документы">
-        <p>Актуальные версии документов опубликованы на сайте Écoute Moi.</p>
+        <p>Документы Écoute Moi размещаются на сайте.</p>
       </PageHeader>
       <section className="panel">
         <ul className="list">

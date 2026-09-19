@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 
 import { useAccountData } from '../../account/AccountDataProvider';
-import { labels, planLabel } from '../../account/labels';
+import { entitlementLabel, labels } from '../../account/labels';
 import { useAuth } from '../../auth/AuthProvider';
 import { Icon, type IconName } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
@@ -11,16 +11,16 @@ import { ageFromBirthDate, initials, yearsLabel } from '../../lib/format';
 
 const shortcuts: Array<{ to: string; icon: IconName; title: string; text: string }> = [
   { to: '/account/profile', icon: 'profile', title: 'Профиль', text: 'Анкета, аудиописьмо и фотографии' },
-  { to: '/account/settings', icon: 'key', title: 'Аккаунт и вход', text: 'Почта, способы входа, копия данных' },
-  { to: '/account/notifications', icon: 'bell', title: 'Уведомления', text: 'Категории, тихие часы и сводки' },
-  { to: '/account/security', icon: 'shield', title: 'Безопасность', text: 'Статус аккаунта и активные сессии' },
+  { to: '/account/settings', icon: 'key', title: 'Аккаунт и вход', text: 'Почта и способы входа' },
+  { to: '/account/notifications', icon: 'bell', title: 'Уведомления', text: 'Где включаются уведомления' },
+  { to: '/account/security', icon: 'shield', title: 'Безопасность', text: 'Статус аккаунта и другие сессии' },
   { to: '/account/privacy', icon: 'lock', title: 'Конфиденциальность', text: 'Что и когда видят другие' },
-  { to: '/account/subscription', icon: 'star', title: 'Premium / Exclusive', text: 'Текущий статус подписки' },
+  { to: '/account/subscription', icon: 'star', title: 'Premium', text: 'Текущий статус Premium' },
 ];
 
 export function OverviewPage() {
   const { user, status } = useAuth();
-  const { summary, subscription } = useAccountData();
+  const { summary, entitlement } = useAccountData();
   const data = summary.data;
   const age = ageFromBirthDate(data?.dating?.birthDate);
   const city = data?.dating?.city;
@@ -54,8 +54,8 @@ export function OverviewPage() {
               {city ? <p className="profile-hero-meta">{[city, country].filter(Boolean).join(', ')}</p> : null}
               <p className="profile-hero-meta">{user?.email ?? 'Email не указан'}</p>
               <div className="chips">
-                {subscription.data ? (
-                  <span className="chip chip-accent">{planLabel(subscription.data.tier, subscription.data.active)}</span>
+                {entitlement.data?.active ? (
+                  <span className="chip chip-accent">{entitlementLabel(entitlement.data)}</span>
                 ) : null}
                 <span className="chip">
                   {status === 'authenticated_profile_ready' ? 'Анкета заполнена' : 'Анкета не завершена'}
@@ -84,8 +84,8 @@ export function OverviewPage() {
       <section className="panel panel-muted" aria-labelledby="app-only-title">
         <h2 id="app-only-title" className="panel-title">Голоса, Резонансы и чаты — в приложении</h2>
         <p>
-          Аудиописьма, Отклики, Резонансы, Взаимность и переписка пока доступны в мобильном приложении Écoute Moi.
-          Здесь — управление аккаунтом, уведомлениями и безопасностью.
+          Аудиописьма, Отклики, Резонансы, Взаимность и переписка доступны в мобильном приложении Écoute Moi. Здесь
+          можно посмотреть анкету, статус аккаунта и заблокированных пользователей.
         </p>
       </section>
     </>

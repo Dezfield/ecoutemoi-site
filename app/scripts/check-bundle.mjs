@@ -38,5 +38,6 @@ for (const file of files.filter((path) => /\.(js|html|css|txt|json)$/.test(path)
 }
 const index = readFileSync(join(dist, 'index.html'), 'utf8');
 assert.match(index, /<meta name="robots" content="noindex,nofollow"/, 'app must be noindex');
-assert.equal(readFileSync(join(dist, 'robots.txt'), 'utf8').trim(), 'User-agent: *\nDisallow: /');
+// Line endings are normalised: a Windows checkout (core.autocrlf) turns public/robots.txt into CRLF.
+assert.equal(readFileSync(join(dist, 'robots.txt'), 'utf8').replace(/\r\n/g, '\n').trim(), 'User-agent: *\nDisallow: /');
 console.log(`Bundle boundary check passed (${files.length} files): no secret keys, no source maps, noindex.`);

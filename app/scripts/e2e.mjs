@@ -63,10 +63,15 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
 const VERIFIED_RPCS = new Set([
   'get_my_dating_profile_v5',
   'get_my_entitlement',
+  'get_my_billing_status_v1',
+  'list_billing_offers_v1',
+  'cancel_my_web_subscription_v1',
   'get_my_account_restriction',
   'get_my_blocked_users',
   'unblock_user',
 ]);
+// The only Edge Function the web app may invoke.
+const VERIFIED_FUNCTIONS = new Set(['billing-create-checkout']);
 const VERIFIED_TABLES = new Set(['profiles', 'dating_profiles', 'privacy_settings']);
 const VERIFIED_BUCKETS = new Set(['dating-photos', 'dating-audio']);
 
@@ -122,6 +127,19 @@ function createMock() {
     identities: [identity('email')],
     // get_my_entitlement() always returns exactly one row: (tier, is_premium, premium_until).
     entitlement: { tier: 'premium', is_premium: true, premium_until: '2026-12-31T00:00:00Z' },
+    // get_my_billing_status_v1() always returns exactly one row.
+    billing: {
+      tier: 'premium', active: true, expires_at: '2026-12-31T00:00:00Z', unlimited: false,
+      auto_renew: true, cancel_at_period_end: false, manage_provider: 'yookassa', payment_pending: false,
+    },
+    // list_billing_offers_v1(): server-authoritative prices.
+    offers: [
+      { id: 'premium_1m', tier: 'premium', title: 'Premium, 1 месяц', description: null,
+        price_amount: 399, currency: 'RUB', duration_days: 30, recurring_allowed: true, sort_order: 10 },
+      { id: 'exclusive_1m', tier: 'exclusive', title: 'Exclusive, 1 месяц', description: null,
+        price_amount: 999, currency: 'RUB', duration_days: 30, recurring_allowed: false, sort_order: 30 },
+    ],
+    checkoutStatus: 200,
     // get_my_account_restriction() returns zero or one row: (sanction, reason, expires_at).
     restriction: null,
     blocked: [
@@ -190,6 +208,13 @@ function createMock() {
           }] : [], cors);
         case 'get_my_entitlement':
           return json(route, 200, [state.entitlement], cors);
+        case 'get_my_billing_status_v1':
+          return json(route, 200, [state.billing], cors);
+        case 'list_billing_offers_v1':
+          return json(route, 200, state.offers, cors);
+        case 'cancel_my_web_subscription_v1':
+          state.billing = { ...state.billing, auto_renew: false, cancel_at_period_end: true };
+          return json(route, 200, [{ canceled: true, current_period_end: state.billing.expires_at }], cors);
         case 'get_my_account_restriction':
           return json(route, 200, state.restriction ? [state.restriction] : [], cors);
         case 'get_my_blocked_users':
@@ -224,7 +249,30 @@ function createMock() {
       return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'image/png' }, body: PNG_1PX });
     }
 
-    // Edge Functions and anything else: no verified contract exists.
+    // ---- Edge Functions: the checkout only, and only with an offer id
+    if (path.startsWith('/functions/v1/')) {
+      const name = path.slice('/functions/v1/'.length);
+      if (!VERIFIED_FUNCTIONS.has(name)) return unverified();
+      if (!route.request().headers().authorization?.startsWith('Bearer ')) {
+        state.unverified.push(`${method} ${path}: no access token`);
+        return json(route, 401, { error: 'authentication_required' }, cors);
+      }
+      // A browser must never be able to choose what a subscription costs.
+      for (const field of ['amount', 'price', 'currency', 'duration_days', 'tier', 'user_id']) {
+        if (body && Object.hasOwn(body, field)) {
+          state.unverified.push(`${method} ${path}: client sent ${field}`);
+          return json(route, 400, { error: 'unexpected_field' }, cors);
+        }
+      }
+      if (state.checkoutStatus !== 200) return json(route, state.checkoutStatus, { error: 'subscription_conflict' }, cors);
+      return json(route, 200, {
+        payment_id: '9f1d5f3c-0000-4000-8000-000000000001',
+        confirmation_url: `${APP}/e2e-payment-gateway`,
+        notice: null,
+      }, cors);
+    }
+
+    // Anything else: no verified contract exists.
     return unverified();
   }
 
@@ -461,38 +509,95 @@ await step('dating profile: get_my_dating_profile_v5 fields and a signed photo U
   await close();
 });
 
-await step('Premium: active premium from get_my_entitlement, no store or payment source claimed', async () => {
+await step('subscription: effective status, server-priced tariffs, no payment source claimed', async () => {
   const { page, close } = await newContext({ signedIn: true });
   await page.goto(`${APP}/account/subscription`);
   await page.getByRole('heading', { name: 'Premium', level: 2 }).waitFor();
   await page.getByText(/Действует до 31 декабря 2026/).waitFor();
+  await page.getByText(/Автопродление включено/).waitFor();
   const text = await bodyText(page);
-  assert.doesNotMatch(text, /App Store|Google Play|магазин|оформлен/i);
-  assert.doesNotMatch(text, /Exclusive/);
+  // Prices come from the backend, formatted for the reader.
+  assert.match(text, /399/);
+  assert.match(text, /999/);
+  // The page never claims a store or names the payment provider.
+  assert.doesNotMatch(text, /App Store|Google Play|ЮKassa|YooKassa|магазин/i);
   await page.goto(`${APP}/account`);
   await page.locator('.profile-hero .chip-accent', { hasText: 'Premium' }).waitFor(); // plan badge
   await close();
 });
 
-await step('Premium: founder, free without entitlement row (is_premium null), expired premium', async () => {
+await step('subscription: founder, free, expired and Exclusive read from the billing status', async () => {
+  const base = { unlimited: false, auto_renew: false, cancel_at_period_end: false, manage_provider: null, payment_pending: false };
   const cases = [
-    [{ tier: 'founder', is_premium: true, premium_until: null }, 'Founder', /Бессрочный статус\./],
-    [{ tier: 'free', is_premium: null, premium_until: null }, 'Free', /^Premium не активен\.$/m],
-    [{ tier: 'free', is_premium: false, premium_until: '2026-01-31T00:00:00Z' }, 'Free', /Срок действия закончился 31 января 2026/],
+    [{ ...base, tier: 'founder', active: true, expires_at: null, unlimited: true }, 'Основатель', /Бессрочный статус\./],
+    [{ ...base, tier: 'free', active: false, expires_at: null }, 'Обычный доступ', /Подписка не активна\./],
+    [{ ...base, tier: 'free', active: false, expires_at: '2026-01-31T00:00:00Z' }, 'Обычный доступ', /закончился 31 января 2026/],
+    [{ ...base, tier: 'exclusive', active: true, expires_at: '2026-12-31T00:00:00Z' }, 'Exclusive', /Действует до 31 декабря 2026/],
   ];
-  for (const [entitlement, label, status] of cases) {
-    const { page, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.entitlement = entitlement; } });
+  for (const [billing, label, status] of cases) {
+    const { page, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.billing = billing; } });
     await page.goto(`${APP}/account/subscription`);
     await page.getByRole('heading', { name: label, level: 2 }).waitFor();
     assert.match(await page.locator('.plan-panel').innerText(), status);
-    if (label === 'Free') {
-      await page.goto(`${APP}/account`);
-      await page.getByRole('heading', { name: 'Обзор', level: 1 }).waitFor();
-      await page.waitForLoadState('networkidle');
-      assert.equal(await page.locator('.profile-hero .chip-accent').count(), 0, 'no plan badge when not active');
-    }
     await close();
   }
+});
+
+await step('checkout: the browser sends an offer id only and is sent to the provider page', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true });
+  await page.goto(`${APP}/account/subscription`);
+  await page.getByRole('button', { name: /Оплатить: Premium, 1 месяц/ }).click();
+  await page.waitForURL(/e2e-payment-gateway/);
+  const call = mock.state.calls.find((item) => item.path === '/functions/v1/billing-create-checkout');
+  assert(call, 'the checkout Edge Function is called');
+  assert.deepEqual(Object.keys(call.body).sort(), ['offer_id', 'return_url', 'save_payment_method']);
+  assert.equal(call.body.offer_id, 'premium_1m');
+  // No price, currency, duration or user id is accepted from the browser.
+  assert.deepEqual(mock.state.unverified, []);
+  await close();
+});
+
+await step('payment result: the return page proves nothing on its own', async () => {
+  // Opening the success route by hand must never activate or claim Premium.
+  const inactive = {
+    tier: 'free', active: false, expires_at: null, unlimited: false, auto_renew: false,
+    cancel_at_period_end: false, manage_provider: null, payment_pending: false,
+  };
+  const { page, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.billing = inactive; } });
+  await page.goto(`${APP}/account/subscription/payment`);
+  await page.getByText('Платёж не подтверждён').waitFor();
+  const text = await bodyText(page);
+  assert.doesNotMatch(text, /Premium активен|Exclusive активен/);
+  await close();
+
+  // A payment the provider has not confirmed yet says so, and waits.
+  const pending = { ...inactive, payment_pending: true };
+  const waiting = await newContext({ signedIn: true, mockSetup: (state) => { state.billing = pending; } });
+  await waiting.page.goto(`${APP}/account/subscription/payment`);
+  await waiting.page.getByText(/Платёж обрабатывается/).waitFor();
+  assert.doesNotMatch(await bodyText(waiting.page), /Premium активен/);
+  await waiting.close();
+
+  // Only an active entitlement from the backend is reported as success.
+  const active = {
+    tier: 'premium', active: true, expires_at: '2026-12-31T00:00:00Z', unlimited: false,
+    auto_renew: false, cancel_at_period_end: false, manage_provider: 'yookassa', payment_pending: false,
+  };
+  const done = await newContext({ signedIn: true, mockSetup: (state) => { state.billing = active; } });
+  await done.page.goto(`${APP}/account/subscription/payment`);
+  await done.page.getByRole('heading', { name: 'Premium активен', level: 2 }).waitFor();
+  await done.close();
+});
+
+await step('cancel autopayment keeps the paid period', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true });
+  await page.goto(`${APP}/account/subscription`);
+  await page.getByRole('button', { name: 'Отключить автопродление' }).click();
+  await page.getByRole('button', { name: 'Отключить' }).last().click();
+  await page.getByText(/Оплаченный период сохраняется полностью/).waitFor();
+  assert(mock.state.calls.some((item) => item.path === '/rest/v1/rpc/cancel_my_web_subscription_v1'));
+  await page.getByText(/Действует до 31 декабря 2026/).waitFor();
+  await close();
 });
 
 await step('login methods: Supabase identities only; VK shows an informational state, never connected/not connected', async () => {

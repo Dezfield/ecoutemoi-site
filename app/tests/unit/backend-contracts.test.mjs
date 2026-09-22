@@ -7,12 +7,19 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 const VERIFIED_RPCS = [
+  'cancel_my_web_subscription_v1',
   'get_my_account_restriction',
+  'get_my_billing_status_v1',
   'get_my_blocked_users',
   'get_my_dating_profile_v5',
   'get_my_entitlement',
+  'list_billing_offers_v1',
   'unblock_user',
 ];
+// The only Edge Function the web invokes. It authenticates the caller from
+// the access token and takes the price from the database, so the browser can
+// neither choose an amount nor act for another account.
+const VERIFIED_EDGE_FUNCTIONS = ['billing-create-checkout'];
 const VERIFIED_TABLES = ['dating_profiles', 'privacy_settings', 'profiles'];
 const VERIFIED_BUCKETS = ['dating-audio', 'dating-photos'];
 
@@ -25,6 +32,14 @@ const walk = (dir) => {
   }
 };
 walk('src');
+
+/**
+ * Comments legitimately name what must never appear in code (a service_role
+ * key, a payment provider), so the code-level checks below read the sources
+ * with comments removed.
+ */
+const stripComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+const code = sources.map(({ path, text }) => ({ path, text: stripComments(text) }));
 
 const collect = (pattern) =>
   [...new Set(sources.flatMap(({ text }) => [...text.matchAll(pattern)].map((match) => match[1])))].sort();
@@ -41,8 +56,28 @@ test('only verified storage buckets are signed', () => {
   assert.deepEqual(collect(/signedUrl\(\s*['"`]([a-z0-9-]+)['"`]/g), VERIFIED_BUCKETS);
 });
 
-test('no Edge Function is invoked (none is verified for the web)', () => {
+test('only verified Edge Functions are invoked', () => {
+  assert.deepEqual(collect(/functions\s*\.\s*invoke\(\s*['"`]([A-Za-z0-9-]+)['"`]/g), VERIFIED_EDGE_FUNCTIONS);
+  // A function must never be called by raw URL: that would bypass the
+  // Authorization header supabase-js attaches.
   for (const { path, text } of sources) {
-    assert.doesNotMatch(text, /functions\s*\.\s*invoke|\/functions\/v1\//, path);
+    assert.doesNotMatch(text, /\/functions\/v1\//, path);
+  }
+});
+
+test('the browser never sends a price, a currency or a user id', () => {
+  // Server-authoritative pricing: an offer id is the only product input.
+  for (const { path, text } of code) {
+    assert.doesNotMatch(text, /(amount|price|currency|duration_days)\s*:/, `${path} must not send pricing`);
+    assert.doesNotMatch(text, /user_id\s*:/, `${path} must not send a user id`);
+  }
+});
+
+test('no service_role key or payment provider secret can reach the bundle', () => {
+  // Naming the provider that manages a subscription is fine (the backend
+  // reports it); reaching its API, or carrying its credentials, is not.
+  for (const { path, text } of code) {
+    assert.doesNotMatch(text, /service_role|SUPABASE_SERVICE_ROLE/i, path);
+    assert.doesNotMatch(text, /yookassa\.ru|api\.yookassa|shop_?id|secret_?key|Idempotence-Key/i, path);
   }
 });

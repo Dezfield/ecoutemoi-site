@@ -91,12 +91,14 @@ export const labels = {
 };
 
 /**
- * Tier names as the backend reports them (get_my_entitlement.tier). Mobile
- * main shows the same names: "Premium" and "Founder".
+ * Tier names as the backend reports them (get_my_entitlement.tier). The tier
+ * is the effective level of the account across every payment source, so the
+ * same words describe a purchase made in the app and one made on the site.
  */
-export function entitlementLabel(entitlement: Entitlement): 'Free' | 'Premium' | 'Founder' {
+export function entitlementLabel(entitlement: Entitlement): 'Free' | 'Premium' | 'Exclusive' | 'Founder' {
   if (!entitlement.active) return 'Free';
-  return entitlement.tier === 'founder' ? 'Founder' : 'Premium';
+  if (entitlement.tier === 'founder') return 'Founder';
+  return entitlement.tier === 'exclusive' ? 'Exclusive' : 'Premium';
 }
 
 /** Wording of mobile main adminAccountStatusLabel(): suspended → «Приостановлен», banned → «Заблокирован». */

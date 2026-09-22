@@ -11,6 +11,7 @@ Enforcement: `app/tests/unit/backend-contracts.test.mjs` fails if the web source
 | Status | Meaning |
 |---|---|
 | VERIFIED | Committed in mobile `main` (file and line given); the web uses it. |
+| PENDING MERGE | Committed in a mobile branch that is **not merged into `main` yet**. The web code exists but must not be deployed before the branch is merged and the migration applied — see "Billing" below. |
 | PLATFORM | Standard Supabase Auth behaviour of `@supabase/supabase-js` 2.116.0, not a custom backend object. |
 | NOT PRESENT | Not in mobile `main`. The web does not call it and shows an honest fallback. |
 | AVAILABLE, NOT USED | Committed in `main`, deliberately not used by the web (reason given). |
@@ -23,7 +24,7 @@ Enforcement: `app/tests/unit/backend-contracts.test.mjs` fails if the web source
 | Profile photos / audio letter | `loadProfileMedia()`, `loadAccountSummary()` | Storage buckets `dating-photos`, `dating-audio` (private), 15-minute signed URLs | Buckets `20260810_voice_dating_mvp.sql:128`, `:142`; read policies `dating_audio_select_allowed` :325 and `dating_photos_storage_select_allowed` :381 (owner access in `private.can_access_dating_audio`, `20260828_premium_discovery_v1.sql:521`, and `private.can_access_dating_photos`, `20260825_zz_admin_center_v3.sql:752`); mobile signs the same paths in `src/services/dating.ts:476-481` | VERIFIED |
 | Display name, account creation date | `loadAccountSummary()` | Table `profiles` (own row) | Columns `supabase/schema.sql:12-19`; policy `profiles_select_allowed_people` `20260810_safety_foundation.sql:289` (own id allowed by `private.can_view_profile`, :147-148); grant `schema.sql:394` | VERIFIED |
 | Onboarding state | `AuthProvider` | Table `dating_profiles`, column `onboarding_complete` (own row) | Policy `dating_profiles_select_self` `20260810_voice_dating_mvp.sql:307`, grant :432; mobile decides on the same flag (`src/services/dating.ts:513`, `src/features/dating/DatingExperience.tsx:5197`) | VERIFIED |
-| Premium status | `loadEntitlement()` | RPC `get_my_entitlement()` → `(tier text, is_premium boolean, premium_until timestamptz)` | `supabase/migrations/20260820_chat_product_premium.sql:498` (grant :686); read by mobile `loadCloudSnapshot()`, `src/services/cloudChat.ts:851` | VERIFIED |
+| Premium status (overview badge) | `loadEntitlement()` | RPC `get_my_entitlement()` → `(tier text, is_premium boolean, premium_until timestamptz)` | `supabase/migrations/20260820_chat_product_premium.sql:498` (grant :686); read by mobile `loadCloudSnapshot()`, `src/services/cloudChat.ts:851` | VERIFIED |
 | Account status (restriction) | `loadAccountRestriction()` | RPC `get_my_account_restriction()` → `(sanction, reason, expires_at)`; only own active `suspended`/`banned`; no sanction id | `supabase/migrations/20260810_trust_safety_push.sql:92` (grant :285). Not called by mobile `main`. | VERIFIED |
 | Blocked users | `loadBlockedUsers()` | RPC `get_my_blocked_users()` → `(user_id, display_name, blocked_at)` | `supabase/migrations/20260810_safety_foundation.sql:451` (grant :869); `src/services/cloudChat.ts:848` | VERIFIED |
 | Unblock | `unblockUser()` | RPC `unblock_user(p_blocked_user_id uuid)`; actor is `auth.uid()` | `supabase/migrations/20260810_safety_foundation.sql:431` (grant :868); mobile `unblockCloudUser()`, `src/services/cloudChat.ts:1180` | VERIFIED |
@@ -42,7 +43,7 @@ All of these exist only on the unmerged mobile branches `antigravity/chat-photo-
 
 | Feature | Previously used by the web | Found only in (unmerged branch) | Status | Web behaviour now |
 |---|---|---|---|---|
-| Subscription source / store | `get_my_store_subscription_v1` | `supabase/migrations/20260905_zz_trust_scam_admin42_premium_release.sql` | NOT PRESENT | Replaced by `get_my_entitlement()`; no store, platform or payment source is shown |
+| Subscription source / store | `get_my_store_subscription_v1` | `supabase/migrations/20260905_zz_trust_scam_admin42_premium_release.sql` | NOT PRESENT | Never used. The subscription page uses `get_my_billing_status_v1()` instead (see Billing) and still shows no store or payment provider |
 | Sign-in methods RPC | `get_my_login_methods` | `supabase/migrations/20260902_auth_identities.sql` | NOT PRESENT | Replaced by `user.identities`; VK shown as «Нет данных» |
 | Active sessions list | `get_my_active_sessions` | `supabase/migrations/20260905_account_portability_sessions.sql` | NOT PRESENT | «Просмотр активных сессий на сайте пока недоступен.»; no list, no count; only «Завершить другие сессии» (PLATFORM) |
 | Data export | `export_my_account_data` | `supabase/migrations/20260905_account_portability_sessions.sql` | NOT PRESENT | «Экспорт данных через веб пока недоступен.»; no download button |
@@ -51,7 +52,31 @@ All of these exist only on the unmerged mobile branches `antigravity/chat-photo-
 | Account deletion | Edge Function `delete-my-account` | `supabase/functions/delete-my-account/index.ts` | NOT PRESENT | Safe fallback page, no destructive control, link to the public «Удаление аккаунта» page |
 | VK sign-in | (docs only) Edge Function `vk-id-auth` | `supabase/functions/vk-id-auth/index.ts` | NOT PRESENT | No VK on the web. In the branch implementation VK is not a Supabase identity provider (the function creates a user with a synthetic `@auth.ecoutemoi.invalid` email), so `user.identities` can never show VK |
 | Auth setup notes | (docs only) `AUTH_SETUP.md` | `AUTH_SETUP.md` | NOT PRESENT | Reference removed |
-| «Exclusive» plan name, plan copy | `honestPremium` wording | `src/features/dating/honestPremium.ts` | NOT PRESENT | Tier names as returned by the RPC: Free / Premium / Founder |
+| «Exclusive» plan name, plan copy | `honestPremium` wording | `src/features/dating/honestPremium.ts` | NOT PRESENT | The web never invents tier names. `exclusive` is a real backend tier only once the billing migration below is merged; until then the RPC can only answer free / premium / founder |
+
+
+## Billing (subscriptions bought on the site)
+
+Added by `supabase/migrations/20260921_billing_web_subscriptions.sql` in **`Dezfield/ecoutemoi-mobile`, branch `claude/web-subscriptions-billing`**. That branch is **not merged into `main` yet**, so every row below is PENDING MERGE, not VERIFIED.
+
+**Deployment blocker:** `app/` must not be deployed with the subscription UI enabled until that branch is merged into `main` and the migration plus the `billing-create-checkout` Edge Function are applied to the Supabase project. Until then `list_billing_offers_v1()` does not exist and the page shows «Оплата на сайте ещё не включена на сервере Écoute Moi».
+
+| Feature | Frontend | Backend object | Evidence (branch `claude/web-subscriptions-billing`) | Status |
+|---|---|---|---|---|
+| Effective subscription status | `loadBillingStatus()` | RPC `get_my_billing_status_v1()` → `(tier, active, expires_at, unlimited, auto_renew, cancel_at_period_end, manage_provider, payment_pending)` | `supabase/migrations/20260921_billing_web_subscriptions.sql` (`grant execute … to authenticated`); computed by `private.effective_entitlement()` over every payment source | PENDING MERGE |
+| Tariffs | `loadBillingOffers()` | RPC `list_billing_offers_v1()` → active offers of this environment, with the server's price | same migration; reads `public.billing_offers` | PENDING MERGE |
+| Start a payment | `startCheckout()` | Edge Function `billing-create-checkout` | `supabase/functions/billing-create-checkout/index.ts`. Takes the user from the access token and the price from `billing_offers`; the browser sends only `offer_id`, `save_payment_method` and a same-origin `return_url` | PENDING MERGE |
+| Turn off autopayment | `cancelAutoRenew()` | RPC `cancel_my_web_subscription_v1()` | same migration; sets `auto_renew = false` and keeps the paid period to `current_period_end` | PENDING MERGE |
+
+Not called by the web, by design:
+
+| Backend object | Why |
+|---|---|
+| `billing-yookassa-webhook`, `billing-reconcile` Edge Functions | Server-to-server only. The webhook is called by YooKassa; reconciliation runs on a schedule with a shared secret. |
+| `billing_start_checkout`, `billing_apply_verified_payment`, `billing_refund_payment`, `billing_*` service RPCs | Execute is granted to `service_role` only; `anon` and `authenticated` are revoked. A browser cannot create, activate or refund a payment. |
+| Tables `billing_subscriptions`, `billing_payments` | Readable through RLS for the own rows, but the web reads the RPC instead so it never depends on the storage shape. No client role has INSERT or UPDATE. |
+
+The payment result page (`/account/subscription/payment`) never treats the redirect back from the provider as proof of payment: it reads `get_my_billing_status_v1()` and shows «Платёж обрабатывается» until the backend reports an active entitlement, with a bounded number of retries.
 
 ## Committed in `main` but deliberately not used
 

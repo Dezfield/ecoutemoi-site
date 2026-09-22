@@ -8,6 +8,7 @@ import { BlockedPage } from './pages/account/BlockedPage';
 import { DeleteAccountPage } from './pages/account/DeleteAccountPage';
 import { LegalPage } from './pages/account/LegalPage';
 import { NotificationsPage } from './pages/account/NotificationsPage';
+import { PaymentResultPage } from './pages/account/PaymentResultPage';
 import { OverviewPage } from './pages/account/OverviewPage';
 import { PrivacyPage } from './pages/account/PrivacyPage';
 import { ProfilePage } from './pages/account/ProfilePage';
@@ -51,6 +52,8 @@ export function App() {
         <Route path="privacy" element={<PrivacyPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="subscription" element={<SubscriptionPage />} />
+        {/* Return URL of the payment provider. It only reads the backend status. */}
+        <Route path="subscription/payment" element={<PaymentResultPage />} />
         <Route path="security" element={<SecurityPage />} />
         <Route path="blocked" element={<BlockedPage />} />
         <Route path="support" element={<SupportPage />} />

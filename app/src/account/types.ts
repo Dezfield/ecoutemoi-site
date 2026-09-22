@@ -1,4 +1,52 @@
-export type PremiumTier = 'free' | 'premium' | 'founder';
+export type PremiumTier = 'free' | 'premium' | 'exclusive' | 'founder';
+
+/** Payment source of a subscription. Never shown to the user as such. */
+export type BillingProvider = 'yookassa' | 'apple' | 'google' | 'rustore';
+
+/**
+ * Row of public.get_my_billing_status_v1() (ecoutemoi-mobile main,
+ * supabase/migrations/20260921_billing_web_subscriptions.sql). The effective
+ * level of the account computed from every payment source at once, plus what
+ * this page needs to offer the right management action.
+ */
+export type BillingStatus = {
+  tier: PremiumTier;
+  active: boolean;
+  expiresAt: string | null;
+  /** Permanent access (founder): no end date. */
+  unlimited: boolean;
+  autoRenew: boolean;
+  cancelAtPeriodEnd: boolean;
+  manageProvider: BillingProvider | null;
+  /** A payment exists but the provider has not confirmed it yet. */
+  paymentPending: boolean;
+};
+
+/**
+ * Row of public.list_billing_offers_v1(). The price is the server's, always:
+ * the browser only ever sends an offer id back.
+ */
+export type BillingOffer = {
+  id: string;
+  tier: Exclude<PremiumTier, 'free' | 'founder'>;
+  title: string;
+  description: string | null;
+  priceAmount: number;
+  currency: string;
+  durationDays: number;
+  recurringAllowed: boolean;
+};
+
+/** Answer of the billing-create-checkout Edge Function. */
+export type CheckoutStart = {
+  paymentId: string;
+  confirmationUrl: string;
+  /** 'already_active' when the account is already covered at this level. */
+  notice: string | null;
+};
+
+/** What the payment page may show after the provider sends a person back. */
+export type PaymentState = 'processing' | 'success' | 'failed' | 'canceled';
 
 export type DatingProfile = {
   displayName: string;

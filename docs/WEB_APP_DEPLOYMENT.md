@@ -1,22 +1,22 @@
 # Web app (app.ecoutemoi.ru): build, configuration and deployment
 
-Status: **not deployed; not approved for public production** (release blockers in §6). Hosting for `app.ecoutemoi.ru` has not been chosen or approved. Nothing in this repository creates DNS records, changes Supabase settings or publishes the app.
+Status: approved by the owner for the 2026-09-24 production release as a web account centre for **existing** users (web signup stays off). Host: **Cloudflare Pages** project `ecoutemoi-app`. The release receipt is `WEB_RELEASE_2026-09-24.md`. Nothing in this repository creates DNS records, changes Supabase settings or publishes the app.
 
 ## 1. Architecture
 
 | Part | Folder | Build | Domain | Deployment |
 |---|---|---|---|---|
 | Public site | `/` (`src/`, `public/`, `scripts/`) | `npm run build` / `build:production` | `ecoutemoi.ru` | Existing GitHub Pages workflow (`.github/workflows/pages.yml`) — unchanged |
-| Web app / личный кабинет | `app/` | `cd app && npm run build` | `app.ecoutemoi.ru` | **Separate static host — owner decision required** |
+| Web app / личный кабинет | `app/` | `cd app && npm run build` | `app.ecoutemoi.ru` | Cloudflare Pages project `ecoutemoi-app` (root `app`, output `dist`) |
 | Backend | `ecoutemoi-mobile/supabase` | — | Supabase project (existing) | Unchanged |
 
 - One repository, two independent Vite builds with their own `package.json`, lockfile, lint and TypeScript configs. The app shares only the design tokens (`app/src/styles/app.css` imports `src/tokens.css`).
 - The app is a client-side SPA (React 19, React Router 7, `@supabase/supabase-js` 2). It is configured with the Supabase project of the mobile app and uses only the publishable key. There is no web-specific user table, auth database, JWT or password storage: a person signs in to the same `auth.users` identity and sees the same `profiles` / `dating_profiles` rows.
 - **Backend contracts:** the web uses only backend objects committed in `ecoutemoi-mobile` `main`. The complete list with source files and line numbers, and the list of objects that are *not* present in `main`, is in [`WEB_BACKEND_MATRIX.md`](WEB_BACKEND_MATRIX.md). It is enforced by `app/tests/unit/backend-contracts.test.mjs` and by the E2E mock. No migration, policy or function was added or changed for the web app.
-- The web app performs no account deletion, data export, notification-preference changes, appeals or session listing: `ecoutemoi-mobile` `main` has no backend for them, so those sections show honest "not available on the web" states.
+- Since ecoutemoi-mobile PR #5 the web also lists active sessions, exports the user's own data, edits notification preferences, shows the safety centre with appeals, and deletes the account through the protected `delete-my-account` Edge Function (three-minute cancellable timer; success only after `{deleted: true}`). VK, Apple and Google sign-in, signup, payments and product areas (Голоса, Резонансы, chat) are not part of this release.
 - The public site only links to the app (`Личный кабинет` in the header). It contains no Supabase client, no auth and no user data.
 
-GitHub Pages serves one custom domain per repository. The site already uses it for `ecoutemoi.ru`, so `app.ecoutemoi.ru` needs a different static host (or a separate Pages repository). Do not move `ecoutemoi.ru` to another provider as part of the app launch.
+GitHub Pages serves one custom domain per repository and already serves `ecoutemoi.ru`, so `app.ecoutemoi.ru` is served by Cloudflare Pages (DNS is already in Cloudflare). Do not move `ecoutemoi.ru` away from GitHub Pages as part of the app launch.
 
 ## 2. Build
 
@@ -63,7 +63,7 @@ The auth callback URL is derived from the current origin: `https://<origin>/auth
    - Cloudflare Pages / Netlify: `_redirects` → `/*  /index.html  200` (Cloudflare Pages also falls back automatically when no `404.html` exists).
    - nginx: `location / { try_files $uri /index.html; }`.
 3. **Caching**: `assets/*` are content-hashed → `Cache-Control: public, max-age=31536000, immutable`; `index.html` → `no-cache`.
-4. **Security headers** (recommended; set on the host, adjust `<ref>`):
+4. **Security headers**: `app/public/_headers` (copied into `dist`) sets `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options: DENY`, `X-Robots-Tag: noindex, nofollow`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` and HSTS for this host only; `app/scripts/check-bundle.mjs` fails the build if they or the SPA fallback (no top-level `404.html`) are missing. A Content-Security-Policy is **not** enforced yet; a candidate to test first in report-only mode (adjust `<ref>`):
    ```
    Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://<ref>.supabase.co; media-src 'self' https://<ref>.supabase.co; connect-src 'self' https://<ref>.supabase.co wss://<ref>.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
    X-Frame-Options: DENY
@@ -74,7 +74,7 @@ The auth callback URL is derived from the current origin: `https://<origin>/auth
    Verify the CSP in a staging deployment before enforcing it (start with `Content-Security-Policy-Report-Only`).
 5. `robots.txt` (`Disallow: /`) and `<meta name="robots" content="noindex,nofollow">` are part of the build: the app must not be indexed.
 
-Hosting options for the owner to choose from (not decided here): Cloudflare Pages (DNS is already on Cloudflare), Netlify, Vercel, an existing VPS with nginx, or a second GitHub Pages repository.
+Cloudflare Pages settings: framework preset none, root directory `app`, build command `npm ci && npm run build`, output `dist`, `NODE_VERSION=24` (≥ 22.12). Production env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (publishable key only), `VITE_PUBLIC_SITE_URL=https://ecoutemoi.ru`, `VITE_AUTH_SIGNUP_ENABLED=false`, `VITE_AUTH_OAUTH_PROVIDERS` empty.
 
 ## 5. Manual configuration
 
@@ -99,25 +99,21 @@ Supabase Auth by default links identities that share a verified email address to
 Mobile `main` has no Apple or Google sign-in. Enabling either on the web is an external configuration step (Supabase dashboard; for Apple a Services ID, domain, return URL `https://<ref>.supabase.co/auth/v1/callback` and a rotating client secret), which cannot be verified from the repositories. Because the first OAuth sign-in creates a Supabase user, OAuth buttons appear only when `VITE_AUTH_SIGNUP_ENABLED=true` and the provider is listed in `VITE_AUTH_OAUTH_PROVIDERS`. Test with the real project before enabling.
 
 ### VK (web) — not implemented
-VK web sign-in is not implemented. `ecoutemoi-mobile` `main` contains no VK backend. A `vk-id-auth` Edge Function exists only on unmerged mobile branches (see `WEB_BACKEND_MATRIX.md`); it is not a production contract, and in that implementation VK is not a Supabase identity provider. Web support needs a separate review of the mobile VK architecture after it is merged to `main`. Until then the web shows VK as unavailable and, in the list of sign-in methods, as «Нет данных».
+VK web sign-in is not implemented. `ecoutemoi-mobile` `main` stores linked VK accounts in `private.external_auth_identities` and reports them through `get_my_login_methods()`, so the web shows whether VK is connected (with its display name). Signing in with VK on the web needs a separately verified redirect/callback flow (the `vk-id-auth` Edge Function is not deployed in production as of 2026-09-24); it is not part of this release.
 
 ## 6. Release blockers and checklist
 
 **WEB SIGNUP MUST NOT BE ENABLED FOR PUBLIC PRODUCTION UNTIL:**
-- approved Terms (Пользовательское соглашение) are published — `/terms/` is a placeholder («В ПОДГОТОВКЕ»);
-- an approved Privacy Policy is published — `/privacy/` is a placeholder;
-- the 18+ consent flow and its legal wording are product-approved (the web currently shows only an 18+ notice and links to the documents; it does not claim that continuing means accepting them);
+- the Terms and the Privacy Policy are final: `/terms/` and `/privacy/` now publish **preliminary** texts (`docs/LEGAL_AUDIT_2026-09-23.md`) that the web must not present as final;
+- the 18+ consent flow and its legal wording are product-approved;
+- transactional email works for every address (email one-time codes are the only web sign-in);
 - signup behaviour is tested against the real Supabase project.
 
-Until then build production with `VITE_AUTH_SIGNUP_ENABLED` unset or `false` and `VITE_AUTH_OAUTH_PROVIDERS` empty.
-
-**Other blockers before production:**
-- The public `/account-deletion/` page describes «Удалить аккаунт» in the app; mobile `main` only has «Удалить карточку» (dating profile reset, auth account kept). The owner must reconcile this text with the real flow. The web itself deletes nothing.
-- Backend objects that exist only on unmerged mobile branches may already be deployed in the live Supabase project (configuration drift, `WEB_BACKEND_MATRIX.md`). Resolve in `ecoutemoi-mobile` before the web uses any of them.
+Production therefore builds with `VITE_AUTH_SIGNUP_ENABLED=false` and an empty `VITE_AUTH_OAUTH_PROVIDERS`. Google is also disabled in the production Auth settings; Apple and VK web flows are not verified.
 
 **Checklist:**
 1. Choose and approve the host; create the project with root `app`, build `npm ci && npm run build`, output `dist`, env vars from §3.
-2. Re-check `WEB_BACKEND_MATRIX.md` against the current `ecoutemoi-mobile` `main`.
+2. Re-check `WEB_BACKEND_MATRIX.md` against the current `ecoutemoi-mobile` `main` (last: `9cb6500`, 2026-09-24).
 3. Deploy to the host's preview URL; add that preview callback URL to Supabase temporarily if you want to test auth there.
 4. Configure `app.ecoutemoi.ru` + DNS record + HTTPS; add the production callback URL in Supabase.
 5. Verify: `/login` → email code sign-in with a real test account; refresh keeps the session; `/account/*` sections load; logout; deep link refresh (`/account/security`); `/auth/callback?error=access_denied` shows "Вход отменён"; unknown path shows 404 page; response headers; `robots.txt`.

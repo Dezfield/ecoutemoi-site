@@ -40,4 +40,11 @@ const index = readFileSync(join(dist, 'index.html'), 'utf8');
 assert.match(index, /<meta name="robots" content="noindex,nofollow"/, 'app must be noindex');
 // Line endings are normalised: a Windows checkout (core.autocrlf) turns public/robots.txt into CRLF.
 assert.equal(readFileSync(join(dist, 'robots.txt'), 'utf8').replace(/\r\n/g, '\n').trim(), 'User-agent: *\nDisallow: /');
+// Cloudflare Pages: the SPA fallback is automatic only while there is no
+// top-level 404.html; security headers come from _headers.
+assert(!files.includes(join(dist, '404.html')), '404.html would disable the Cloudflare Pages SPA fallback');
+const headers = readFileSync(join(dist, '_headers'), 'utf8');
+for (const header of ['X-Content-Type-Options: nosniff', 'Referrer-Policy: strict-origin-when-cross-origin', 'X-Frame-Options: DENY', 'X-Robots-Tag: noindex, nofollow']) {
+  assert(headers.includes(header), `_headers must set ${header}`);
+}
 console.log(`Bundle boundary check passed (${files.length} files): no secret keys, no source maps, noindex.`);

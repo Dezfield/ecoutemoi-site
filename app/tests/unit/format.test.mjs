@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { ageFromBirthDate, formatDuration, initials, yearsLabel } from '../../src/lib/format.ts';
-import { entitlementLabel, labels, restrictionLabels } from '../../src/account/labels.ts';
+import { appealLabels, entitlementLabel, labels, reportLabels, sanctionLabels } from '../../src/account/labels.ts';
 
 test('age from birth date', () => {
   const now = new Date(2026, 8, 18);
@@ -35,9 +35,12 @@ test('entitlement labels use only get_my_entitlement tiers', () => {
   assert.equal(entitlementLabel({ tier: 'premium', active: false, premiumUntil: null }), 'Free');
 });
 
-test('restriction labels follow mobile account status wording', () => {
-  assert.equal(restrictionLabels.suspended, 'Аккаунт приостановлен');
-  assert.equal(restrictionLabels.banned, 'Аккаунт заблокирован');
+test('safety labels cover every value of the backend CHECK constraints', () => {
+  assert.deepEqual(Object.keys(sanctionLabels).sort(), ['banned', 'suspended', 'warning']);
+  assert.deepEqual(Object.keys(appealLabels).sort(), ['overturned', 'pending', 'reviewing', 'upheld']);
+  assert.deepEqual(Object.keys(reportLabels).sort(), ['actioned', 'dismissed', 'open', 'reviewing']);
+  assert.equal(sanctionLabels.suspended, 'Аккаунт приостановлен');
+  assert.equal(sanctionLabels.banned, 'Аккаунт заблокирован');
 });
 
 test('dating labels: known codes from mobile main, unknown codes are not guessed', () => {

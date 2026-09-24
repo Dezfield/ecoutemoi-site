@@ -63,12 +63,31 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
 const VERIFIED_RPCS = new Set([
   'get_my_dating_profile_v5',
   'get_my_entitlement',
-  'get_my_account_restriction',
   'get_my_blocked_users',
   'unblock_user',
+  'get_my_login_methods',
+  'get_my_active_sessions',
+  'export_my_account_data',
+  'get_my_notification_preferences_v1',
+  'update_my_notification_preferences_v1',
+  'get_my_safety_center_v1',
+  'submit_moderation_appeal',
+]);
+// The ten account RPCs guarded by private.require_existing_account() in mobile main
+// (20260921120100_account_rpc_deletion_guards.sql) that the web calls.
+const GUARDED_RPCS = new Set([
+  'get_my_login_methods',
+  'get_my_active_sessions',
+  'export_my_account_data',
+  'get_my_notification_preferences_v1',
+  'update_my_notification_preferences_v1',
+  'get_my_safety_center_v1',
+  'submit_moderation_appeal',
 ]);
 const VERIFIED_TABLES = new Set(['profiles', 'dating_profiles', 'privacy_settings']);
 const VERIFIED_BUCKETS = new Set(['dating-photos', 'dating-audio']);
+const VERIFIED_FUNCTIONS = new Set(['delete-my-account']);
+const SANCTION_ID = '33333333-3333-4333-8333-333333333333';
 
 const identity = (provider) => ({
   id: `${provider}-identity`,
@@ -122,13 +141,37 @@ function createMock() {
     identities: [identity('email')],
     // get_my_entitlement() always returns exactly one row: (tier, is_premium, premium_until).
     entitlement: { tier: 'premium', is_premium: true, premium_until: '2026-12-31T00:00:00Z' },
-    // get_my_account_restriction() returns zero or one row: (sanction, reason, expires_at).
-    restriction: null,
+    // get_my_login_methods(): jsonb array, one entry per apple/google/vk/email.
+    loginMethods: [
+      { provider: 'apple', connected: false, identityId: null, label: null },
+      { provider: 'google', connected: false, identityId: null, label: null },
+      { provider: 'vk', connected: false, identityId: null, label: null },
+      { provider: 'email', connected: true, identityId: 'email-identity', label: 'tester@example.com' },
+    ],
+    // get_my_active_sessions(): table rows; current_session is derived from the JWT session id.
+    sessions: [
+      { session_id: 'sess-current', created_at: '2026-09-20T10:00:00Z', updated_at: '2026-09-24T09:00:00Z', user_agent: 'Mozilla/5.0 (Windows NT 10.0) Chrome/140', ip_address: '192.0.2.10', current_session: true },
+      { session_id: 'sess-phone', created_at: '2026-09-18T10:00:00Z', updated_at: '2026-09-23T20:00:00Z', user_agent: 'Ecoute Moi/1.0 (iPhone; iOS 18)', ip_address: '198.51.100.7', current_session: false },
+    ],
+    // jsonb of get_/update_my_notification_preferences_v1.
+    notificationPreferences: {
+      messagesEnabled: true, datingEnabled: true, productEnabled: false, quietHoursEnabled: false,
+      quietStart: '22:00', quietEnd: '08:00', timezone: 'Europe/Moscow', deliveryMode: 'instant',
+      safetyAlwaysOn: true, updatedAt: '2026-09-20T10:00:00Z',
+    },
+    // jsonb of get_my_safety_center_v1().
+    safety: { accountStatus: 'clear', activeSanction: null, recentReports: [], recentAppeals: [], hasMoreReports: false },
+    // delete-my-account behaviour: 'ok' → 200 { deleted: true }; 'fail' → 400 account_deletion_failed.
+    deleteMode: 'ok',
+    deleteDelayMs: 0,
+    deleteRequests: 0,
+    deleted: false,
     blocked: [
       { user_id: '11111111-1111-4111-8111-111111111111', display_name: 'Анна', blocked_at: '2026-09-10T12:00:00Z' },
       { user_id: '22222222-2222-4222-8222-222222222222', display_name: 'Мария', blocked_at: '2026-09-11T12:00:00Z' },
     ],
     calls: [],
+    callsAfterDeletion: [],
     unverified: [],
   };
 
@@ -170,6 +213,10 @@ function createMock() {
       if (url.searchParams.get('grant_type') === 'refresh_token') return json(route, 200, makeSession(), cors);
       return json(route, 400, { code: 'flow_state_not_found', msg: 'invalid flow state, no valid flow state found' }, cors);
     }
+    if (state.deleted && (path === '/auth/v1/user' || path === '/auth/v1/logout')) {
+      // GoTrue after soft deletion: the session no longer exists.
+      return json(route, 403, { code: 'session_not_found', msg: 'Session from session_id claim in JWT does not exist' }, cors);
+    }
     if (path === '/auth/v1/user') return json(route, 200, makeUser('tester@example.com', state.identities), cors);
     if (path === '/auth/v1/logout') return route.fulfill({ status: 204, headers: cors });
 
@@ -177,7 +224,50 @@ function createMock() {
     if (path.startsWith('/rest/v1/rpc/')) {
       const rpc = path.slice('/rest/v1/rpc/'.length);
       if (!VERIFIED_RPCS.has(rpc)) return unverified();
+      if (state.deleted) {
+        state.callsAfterDeletion.push(rpc);
+        if (GUARDED_RPCS.has(rpc)) return json(route, 403, { code: '42501', message: 'Account is unavailable' }, cors);
+      }
       switch (rpc) {
+        case 'get_my_login_methods':
+          return json(route, 200, state.loginMethods, cors);
+        case 'get_my_active_sessions':
+          return json(route, 200, state.sessions, cors);
+        case 'export_my_account_data':
+          return json(route, 200, {
+            formatVersion: 1, generatedAt: '2026-09-24T10:00:00Z', scopeNote: 'The export contains account data and content created by the requesting user.',
+            account: { id: USER_ID, email: 'tester@example.com' }, profile: { id: USER_ID, display_name: 'Алиса' },
+            datingProfile: {}, datingPhotos: [], privacySettings: {}, sentMessages: [], blocksCreated: [],
+            reportsSubmitted: [], sanctionsReceived: [], appealsSubmitted: [], feedbackSubmitted: [], premiumPreferences: {},
+          }, cors);
+        case 'get_my_notification_preferences_v1':
+          return json(route, 200, state.notificationPreferences, cors);
+        case 'update_my_notification_preferences_v1': {
+          const expected = ['p_dating_enabled', 'p_delivery_mode', 'p_messages_enabled', 'p_product_enabled', 'p_quiet_end', 'p_quiet_hours_enabled', 'p_quiet_start', 'p_timezone'];
+          if (JSON.stringify(Object.keys(body).sort()) !== JSON.stringify(expected)
+            || !['instant', 'hourly', 'daily'].includes(body.p_delivery_mode)
+            || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(body.p_quiet_start) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(body.p_quiet_end)) {
+            state.unverified.push(`update_my_notification_preferences_v1 with unexpected arguments ${JSON.stringify(body)}`);
+            return json(route, 400, { code: '22023', message: 'invalid arguments' }, cors);
+          }
+          state.notificationPreferences = {
+            ...state.notificationPreferences,
+            messagesEnabled: body.p_messages_enabled, datingEnabled: body.p_dating_enabled, productEnabled: body.p_product_enabled,
+            quietHoursEnabled: body.p_quiet_hours_enabled, quietStart: body.p_quiet_start, quietEnd: body.p_quiet_end,
+            timezone: body.p_timezone, deliveryMode: body.p_delivery_mode, updatedAt: '2026-09-24T10:00:00Z',
+          };
+          return json(route, 200, state.notificationPreferences, cors);
+        }
+        case 'get_my_safety_center_v1':
+          return json(route, 200, state.safety, cors);
+        case 'submit_moderation_appeal': {
+          const sanction = state.safety.activeSanction;
+          if (!sanction || body.p_sanction_id !== sanction.id || Object.keys(body).sort().join() !== 'p_reason,p_sanction_id') {
+            return json(route, 400, { code: '22023', message: 'Sanction is not active' }, cors);
+          }
+          sanction.appeal = { id: '44444444-4444-4444-8444-444444444444', reason: body.p_reason, status: 'pending', createdAt: '2026-09-24T10:00:00Z', updatedAt: '2026-09-24T10:00:00Z' };
+          return json(route, 200, sanction.appeal.id, cors);
+        }
         case 'get_my_dating_profile_v5':
           return json(route, 200, state.onboardingComplete ? [{
             display_name: 'Алиса', about: 'Люблю долгие прогулки и джаз.', birth_date: '1996-03-14', city: 'Москва',
@@ -190,8 +280,6 @@ function createMock() {
           }] : [], cors);
         case 'get_my_entitlement':
           return json(route, 200, [state.entitlement], cors);
-        case 'get_my_account_restriction':
-          return json(route, 200, state.restriction ? [state.restriction] : [], cors);
         case 'get_my_blocked_users':
           return json(route, 200, state.blocked, cors);
         case 'unblock_user':
@@ -224,7 +312,26 @@ function createMock() {
       return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'image/png' }, body: PNG_1PX });
     }
 
-    // Edge Functions and anything else: no verified contract exists.
+    // ---- Edge Function delete-my-account (mobile main supabase/functions/delete-my-account/index.ts)
+    if (path.startsWith('/functions/v1/')) {
+      const name = path.slice('/functions/v1/'.length);
+      if (!VERIFIED_FUNCTIONS.has(name) || method !== 'POST') return unverified();
+      const bearer = request.headers().authorization ?? '';
+      if (!bearer.startsWith('Bearer ') || bearer.includes('e2e-publishable-key')) {
+        return json(route, 401, { error: 'authentication_required' }, cors);
+      }
+      if (JSON.stringify(body) !== JSON.stringify({ confirmation: 'delete-my-account' })) {
+        state.unverified.push(`delete-my-account with unexpected body ${JSON.stringify(body)}`);
+        return json(route, 400, { error: 'confirmation_required' }, cors);
+      }
+      state.deleteRequests += 1;
+      if (state.deleteDelayMs) await new Promise((done) => setTimeout(done, state.deleteDelayMs));
+      if (state.deleteMode === 'fail') return json(route, 400, { error: 'account_deletion_failed' }, cors);
+      state.deleted = true;
+      return json(route, 200, { deleted: true }, cors);
+    }
+
+    // Anything else: no verified contract exists.
     return unverified();
   }
 
@@ -495,46 +602,80 @@ await step('Premium: founder, free without entitlement row (is_premium null), ex
   }
 });
 
-await step('login methods: Supabase identities only; VK shows an informational state, never connected/not connected', async () => {
+await step('login methods: exactly what get_my_login_methods returns (incl. VK state), no VK/OAuth sign-in offered', async () => {
   const { page, close } = await newContext({
     signedIn: true,
-    mockSetup: (state) => { state.identities = [identity('email'), identity('google')]; },
+    mockSetup: (state) => {
+      state.loginMethods = [
+        { provider: 'apple', connected: true, identityId: 'apple-identity', label: null },
+        { provider: 'google', connected: false, identityId: null, label: null },
+        { provider: 'vk', connected: true, identityId: null, label: 'Алиса VK' },
+        { provider: 'email', connected: false, identityId: null, label: null },
+      ];
+    },
   });
   await page.goto(`${APP}/account/settings`);
   const row = (name) => page.locator('.list-row', { has: page.locator('.list-title', { hasText: new RegExp(`^${name}$`) }) });
-  await row('Почта').getByText('Подключено', { exact: true }).waitFor();
-  assert(await row('Почта').getByText('tester@example.com').isVisible());
-  assert(await row('Google').getByText('Подключено', { exact: true }).isVisible());
-  assert(await row('Apple ID').getByText('Не подключено', { exact: true }).isVisible());
-  assert(await row('Телефон').getByText('Не подключено', { exact: true }).isVisible());
-  assert(await row('VK ID').getByText('Нет данных', { exact: true }).isVisible());
-  assert(await row('VK ID').getByText('Сайт не может проверить этот способ входа.').isVisible());
-  assert.equal(await row('VK ID').getByText(/Подключено|Не подключено/).count(), 0);
+  await row('Apple ID').getByText('Подключено', { exact: true }).waitFor();
+  assert(await row('Google').getByText('Не подключено', { exact: true }).isVisible());
+  assert(await row('VK ID').getByText('Подключено', { exact: true }).isVisible());
+  assert(await row('VK ID').getByText('Алиса VK').isVisible());
+  assert(await row('Почта').getByText('Не подключено', { exact: true }).isVisible());
+  assert.equal(await page.locator('.list-row').count(), 4, 'one row per provider of the RPC');
   const text = await bodyText(page);
   assert.match(text, /Способы входа относятся к одному аккаунту, только если они уже связаны с ним\./);
-  assert.doesNotMatch(text, /никогда не объединяет/);
+  assert.match(text, /На сайте сейчас доступен вход по коду на почту\./);
+  assert.equal(await page.getByRole('button', { name: /VK|Google|Apple/ }).count(), 0, 'no sign-in or linking buttons');
   await close();
 });
 
-await step('unsupported sections show honest fallbacks: export, notifications, sessions', async () => {
+await step('data export: export_my_account_data without arguments, saved as a local JSON file', async () => {
   const { page, mock, close } = await newContext({ signedIn: true });
   await page.goto(`${APP}/account/settings`);
-  await page.getByText('Экспорт данных через веб пока недоступен.').waitFor();
-  assert.equal(await page.getByRole('button', { name: /Скачать/ }).count(), 0);
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Скачать копию данных' }).click();
+  const download = await downloadPromise;
+  assert.match(download.suggestedFilename(), /^ecoute-moi-data-\d{4}-\d{2}-\d{2}\.json$/);
+  const saved = JSON.parse(await (await import('node:fs/promises')).readFile(await download.path(), 'utf8'));
+  assert.equal(saved.account.id, USER_ID);
+  await page.getByText('Файл с копией данных сохранён на этом устройстве.').waitFor();
+  const call = mock.state.calls.find((item) => item.path === '/rest/v1/rpc/export_my_account_data');
+  assert.deepEqual(call.body, {}, 'no user id or other argument is sent');
+  await close();
+});
 
+await step('notifications: real preferences from the RPC; save sends exactly the eight server arguments', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true });
   await page.goto(`${APP}/account/notifications`);
-  await page.getByText('Настройки уведомлений сейчас доступны в мобильном приложении Écoute Moi.').waitFor();
-  assert.equal(await page.getByRole('switch').count(), 0, 'no fake switches');
-  assert.equal(await page.getByRole('radio').count(), 0);
-  assert.equal(await page.getByRole('button', { name: /Сохранить/ }).count(), 0, 'no save button');
+  const product = page.getByRole('switch', { name: 'Новости продукта' });
+  await product.waitFor();
+  assert.equal(await product.isChecked(), false);
+  assert.equal(await page.getByRole('switch', { name: 'Сообщения' }).isChecked(), true);
+  await product.check();
+  await page.getByRole('radio', { name: 'Раз в день' }).check();
+  await page.getByRole('button', { name: 'Сохранить настройки' }).click();
+  await page.getByText('Настройки сохранены. Они общие для приложения и сайта.').waitFor();
+  const call = mock.state.calls.find((item) => item.path === '/rest/v1/rpc/update_my_notification_preferences_v1');
+  assert.deepEqual(call.body, {
+    p_messages_enabled: true, p_dating_enabled: true, p_product_enabled: true, p_quiet_hours_enabled: false,
+    p_quiet_start: '22:00', p_quiet_end: '08:00', p_timezone: 'Europe/Moscow', p_delivery_mode: 'daily',
+  });
+  await page.reload();
+  await page.getByRole('switch', { name: 'Новости продукта' }).waitFor();
+  assert.equal(await page.getByRole('switch', { name: 'Новости продукта' }).isChecked(), true, 'saved state reloads from the server');
+  await axe(page, '/account/notifications');
+  await close();
+});
 
+await step('sessions: list from get_my_active_sessions; end the other sessions only', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true });
   await page.goto(`${APP}/account/security`);
-  await page.getByText('Просмотр активных сессий на сайте пока недоступен.').waitFor();
-  const sessionsPanel = page.locator('section[aria-labelledby="sessions-title"]');
-  assert.equal(await sessionsPanel.locator('ul, li').count(), 0, 'no fake session list');
-  assert.equal(await page.getByText(/Последняя активность|IP:/).count(), 0, 'no fake session details');
-  const endOthers = page.getByRole('button', { name: 'Завершить другие сессии' });
-  assert.equal(await endOthers.innerText(), 'Завершить другие сессии', 'no invented session count');
+  const panel = page.locator('section[aria-labelledby="sessions-title"]');
+  await panel.getByText('iPhone или iPad').waitFor();
+  assert(await panel.getByText('Windows').isVisible());
+  assert(await panel.getByText('Этот браузер').isVisible());
+  assert(await panel.getByText('IP: 198.51.100.7').isVisible());
+  const endOthers = page.getByRole('button', { name: 'Завершить другие сессии · 1' });
   await endOthers.click();
   await page.getByRole('dialog', { name: 'Завершить другие сессии?' }).getByRole('button', { name: 'Завершить' }).click();
   await page.getByText('Вход на других устройствах и в других браузерах завершён.').waitFor();
@@ -544,26 +685,48 @@ await step('unsupported sections show honest fallbacks: export, notifications, s
   await close();
 });
 
-await step('account status: get_my_account_restriction, no appeal form without a sanction id', async () => {
-  const clear = await newContext({ signedIn: true });
-  await clear.page.goto(`${APP}/account/security`);
-  await clear.page.getByText('Активных ограничений нет').waitFor();
-  await clear.close();
-
+await step('safety centre: clear status and own reports from get_my_safety_center_v1', async () => {
   const { page, close } = await newContext({
     signedIn: true,
     mockSetup: (state) => {
-      state.restriction = { sanction: 'suspended', reason: 'Нарушение правил сообщества.', expires_at: '2026-09-30T12:00:00Z' };
+      state.safety.recentReports = [{ id: 'r1', category: 'harassment', details: 'x', status: 'reviewing', contentType: 'message', createdAt: '2026-09-21T10:00:00Z' }];
+    },
+  });
+  await page.goto(`${APP}/account/security`);
+  await page.getByText('Активных ограничений нет').waitFor();
+  await page.getByText('Оскорбления или преследование').waitFor();
+  assert(await page.getByText('На рассмотрении').isVisible());
+  assert.equal(await page.getByRole('textbox').count(), 0, 'no appeal form without an active sanction');
+  await close();
+});
+
+await step('appeal: the sanction id comes from the server; the form never asks for it', async () => {
+  const { page, mock, close } = await newContext({
+    signedIn: true,
+    mockSetup: (state) => {
+      state.safety.accountStatus = 'suspended';
+      state.safety.activeSanction = {
+        id: SANCTION_ID, kind: 'suspended', reason: 'Нарушение правил сообщества.',
+        startsAt: '2026-09-20T12:00:00Z', expiresAt: '2026-09-30T12:00:00Z', appeal: null,
+      };
     },
   });
   await page.goto(`${APP}/account/security`);
   await page.getByText('Аккаунт приостановлен').waitFor();
   assert(await page.getByText('Нарушение правил сообщества.').isVisible());
   assert(await page.getByText(/Действует до: 30 сентября 2026/).isVisible());
-  assert(await page.getByText(/Обжаловать ограничение через сайт пока нельзя/).isVisible());
-  assert.equal(await page.getByRole('textbox').count(), 0, 'no appeal form and no manual sanction id');
-  assert.doesNotMatch(await bodyText(page), /Мои жалобы/);
-  await axe(page, '/account/security (restricted)');
+  assert.equal(await page.getByRole('textbox').count(), 1, 'only the reason text field');
+  assert.equal(await page.getByText(SANCTION_ID).count(), 0, 'the sanction id is never shown or typed');
+  await page.getByRole('button', { name: 'Отправить обращение' }).click();
+  await page.getByText('Опишите ситуацию текстом от 20 до 1500 символов.').waitFor();
+  await page.getByLabel('Что важно учесть при повторной проверке?').fill('Прошу пересмотреть: сообщение было вырвано из контекста.');
+  await page.getByRole('button', { name: 'Отправить обращение' }).click();
+  await page.getByRole('dialog', { name: 'Отправить обращение?' }).getByRole('button', { name: 'Отправить' }).click();
+  await page.getByText('Обращение отправлено. Статус появится здесь после рассмотрения.').waitFor();
+  await page.getByText(/Обращение: Ожидает рассмотрения/).waitFor();
+  const call = mock.state.calls.find((item) => item.path === '/rest/v1/rpc/submit_moderation_appeal');
+  assert.deepEqual(call.body, { p_sanction_id: SANCTION_ID, p_reason: 'Прошу пересмотреть: сообщение было вырвано из контекста.' });
+  await axe(page, '/account/security (sanction)');
   await close();
 });
 
@@ -586,18 +749,73 @@ await step('blocked users: list from get_my_blocked_users; unblock via unblock_u
   await close();
 });
 
-await step('delete account: no deletion backend, so no destructive control and no request', async () => {
+const deleteCalls = (mock) => mock.state.calls.filter((call) => call.path === '/functions/v1/delete-my-account');
+
+async function startDeletionTimer(page) {
+  await page.getByRole('button', { name: 'Удалить аккаунт' }).click();
+  await page.getByRole('dialog', { name: 'Удалить аккаунт?' }).getByRole('button', { name: 'Запустить таймер' }).click();
+  await page.getByRole('timer').waitFor();
+}
+
+await step('delete account: confirm → three-minute timer → cancel sends nothing', async () => {
   const { page, mock, close } = await newContext({ signedIn: true });
+  await page.clock.install();
   await page.goto(`${APP}/account/delete`);
-  await page.getByText('Удаление аккаунта через сайт пока недоступно.').first().waitFor();
-  assert.equal(await page.getByRole('button', { name: /Удалить/ }).count(), 0, 'no delete button');
-  assert.equal(await page.getByRole('timer').count(), 0, 'no deletion timer');
-  const link = page.getByRole('link', { name: 'Открыть страницу «Удаление аккаунта»' });
-  assert.equal(await link.getAttribute('href'), 'https://ecoutemoi.ru/account-deletion/');
-  await page.waitForLoadState('networkidle');
-  assert(!mock.state.calls.some((call) => call.path?.startsWith('/functions/v1/')), 'no Edge Function call');
+  await page.getByRole('heading', { name: 'Удаление аккаунта', level: 1 }).waitFor();
+  await page.getByRole('button', { name: 'Удалить аккаунт' }).click();
+  await page.getByRole('dialog', { name: 'Удалить аккаунт?' }).getByRole('button', { name: 'Не удалять' }).click();
+  assert.equal(await page.getByRole('timer').count(), 0);
+  await startDeletionTimer(page);
+  assert.match(await page.getByRole('timer').innerText(), /3:00/);
+  await page.clock.fastForward('01:30');
+  assert.match(await page.getByRole('timer').innerText(), /1:30/);
+  await page.getByRole('button', { name: 'Отменить удаление' }).click();
+  await page.getByText('Удаление отменено. Аккаунт сохранён.').waitFor();
+  await page.clock.fastForward('05:00');
+  assert.equal(deleteCalls(mock).length, 0, 'cancelled deletion never reaches the Edge Function');
+  await axe(page, '/account/delete');
+  await close();
+});
+
+await step('delete account: Edge failure is never reported as success; retry then success clears the session', async () => {
+  const { page, mock, errors, close } = await newContext({
+    signedIn: true,
+    mockSetup: (state) => { state.deleteMode = 'fail'; state.deleteDelayMs = 700; },
+  });
+  await page.clock.install();
+  await page.goto(`${APP}/account/delete`);
+  await startDeletionTimer(page);
+  await page.clock.fastForward('03:01');
+  await page.getByText('Удаляем аккаунт…').waitFor();
+  await page.getByText('Удаление не подтверждено').waitFor();
+  assert(await page.getByText(/Удаление не завершено\. Повторите попытку/).isVisible());
+  assert.equal(page.url(), `${APP}/account/delete`, 'stays on the page after a failure');
+  assert.equal(await page.getByRole('heading', { name: 'Аккаунт удалён' }).count(), 0, 'no false success');
+  assert.notEqual(await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY), null, 'session kept after failure');
+  assert.equal(deleteCalls(mock).length, 1);
+  assert.deepEqual(deleteCalls(mock)[0].body, { confirmation: 'delete-my-account' }, 'no user id is sent');
+
+  mock.state.deleteMode = 'ok';
+  await page.getByRole('button', { name: 'Повторить удаление' }).click();
+  await page.waitForURL(`${APP}/account-deleted`);
+  await page.getByRole('heading', { name: 'Аккаунт удалён', level: 1 }).waitFor();
+  await page.waitForFunction((key) => window.localStorage.getItem(key) === null, STORAGE_KEY);
+  assert.doesNotMatch(await bodyText(page), /Алиса|tester@example\.com/, 'no private data on the confirmation page');
+  await page.goto(`${APP}/account/security`);
+  await page.waitForURL(`${APP}/login`);
+  assert.deepEqual(mock.state.callsAfterDeletion, [], 'no account RPC is called after the deletion succeeded');
+  assert.deepEqual(errors, []);
+  await close();
+});
+
+await step('account-deleted page is public, shows no account data and makes no backend request', async () => {
+  const { page, mock, close } = await newContext();
   await page.goto(`${APP}/account-deleted`);
-  await page.getByRole('heading', { name: 'Здесь пока тихо.' }).waitFor(); // no false "account deleted" page
+  await page.getByRole('heading', { name: 'Аккаунт удалён', level: 1 }).waitFor();
+  await page.waitForLoadState('networkidle');
+  assert.equal(mock.state.calls.filter((call) => call.path?.startsWith('/rest/') || call.path?.startsWith('/functions/')).length, 0);
+  assert.equal(await page.locator('meta[name="robots"]').getAttribute('content'), 'noindex,nofollow');
+  await axe(page, '/account-deleted');
   await close();
 });
 

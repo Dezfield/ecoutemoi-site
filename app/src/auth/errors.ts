@@ -61,6 +61,11 @@ export function authErrorMessage(error: unknown): string {
   ) {
     return 'Слишком много попыток. Подождите несколько минут и попробуйте снова.';
   }
+  // Supabase Auth answers 500 unexpected_failure when its SMTP provider rejects the letter.
+  if (includesAny(message, ['error sending', 'sending magic link', 'sending confirmation', 'could not send email'])
+    || includesAny(code, ['unexpected_failure'])) {
+    return 'Не удалось отправить письмо с кодом. Попробуйте позже или войдите в приложении Écoute Moi.';
+  }
   if (includesAny(message, ['invalid login credentials', 'invalid credentials'])) {
     return 'Неверный email или пароль.';
   }

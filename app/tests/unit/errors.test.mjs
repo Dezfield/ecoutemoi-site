@@ -18,6 +18,12 @@ test('maps known auth failures to neutral wording', () => {
   assert.equal(authErrorMessage({ code: 'over_email_send_rate_limit', message: 'email rate limit exceeded' }), 'Слишком много попыток. Подождите несколько минут и попробуйте снова.');
 });
 
+test('a rejected email letter is reported as a sending failure, never as a sent code', () => {
+  const message = authErrorMessage(Object.assign(new Error('Error sending magic link email'), { code: 'unexpected_failure', status: 500 }));
+  assert.equal(message, 'Не удалось отправить письмо с кодом. Попробуйте позже или войдите в приложении Écoute Moi.');
+  assert.doesNotMatch(message, /отправлен/i);
+});
+
 test('unknown email on sign-in does not push towards registration', () => {
   const message = authErrorMessage(Object.assign(new Error('Signups not allowed for otp'), { code: 'otp_disabled' }));
   assert.equal(message, ACCOUNT_NOT_FOUND_MESSAGE);

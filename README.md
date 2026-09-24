@@ -39,4 +39,4 @@ Set `SITE_BASE=/ecoutemoi-site/` for project Pages; use `/` for the apex domain.
 ## Publishing
 The owner approved this first website release on 13 September 2026. See `docs/DEPLOYMENT.md` and `docs/DNS_SETUP.md`. Publication is controlled by repository variables and the `github-pages` environment. Domain settings and DNS are managed separately from the build.
 
-Legal documents and the external support contact remain in preparation. No unconfirmed store links, launch dates, subscription prices or features are published.
+The privacy policy and terms pages now contain clearly marked preliminary text. Community rules, account deletion guidance and in-app support instructions are published. Operator details, a public contact for users without app access, retention periods and legal approval remain open; see `docs/LEGAL_AUDIT_2026-09-23.md`. No unconfirmed store links, launch dates or subscription prices are published.

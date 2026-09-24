@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router';
 import { AccountDataProvider } from './account/AccountDataProvider';
 import { ProtectedRoute, PublicOnlyRoute } from './auth/ProtectedRoute';
 import { AccountLayout } from './layouts/AccountLayout';
+import { AccountDeletedPage } from './pages/AccountDeletedPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { BlockedPage } from './pages/account/BlockedPage';
 import { DeleteAccountPage } from './pages/account/DeleteAccountPage';
@@ -35,6 +36,7 @@ export function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/account-deleted" element={<AccountDeletedPage />} />
       <Route
         path="/account"
         element={

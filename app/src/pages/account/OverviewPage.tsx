@@ -13,7 +13,7 @@ const shortcuts: Array<{ to: string; icon: IconName; title: string; text: string
   { to: '/account/profile', icon: 'profile', title: 'Профиль', text: 'Анкета, аудиописьмо и фотографии' },
   { to: '/account/settings', icon: 'key', title: 'Аккаунт и вход', text: 'Почта и способы входа' },
   { to: '/account/notifications', icon: 'bell', title: 'Уведомления', text: 'Где включаются уведомления' },
-  { to: '/account/security', icon: 'shield', title: 'Безопасность', text: 'Статус аккаунта и другие сессии' },
+  { to: '/account/security', icon: 'shield', title: 'Безопасность', text: 'Статус аккаунта, обращения и сессии' },
   { to: '/account/privacy', icon: 'lock', title: 'Конфиденциальность', text: 'Что и когда видят другие' },
   { to: '/account/subscription', icon: 'star', title: 'Premium', text: 'Текущий статус Premium' },
 ];

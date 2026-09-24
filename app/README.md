@@ -2,9 +2,9 @@
 
 Separate Vite application for `app.ecoutemoi.ru`, living next to the public site in the same repository. It is configured with the **Supabase project of the mobile app**, so a person signs in to the same auth user and sees the same profile rows. On the web, sign-in is by email one-time code.
 
-Current scope (web account foundation): email-code sign-in, optional email-code registration behind `VITE_AUTH_SIGNUP_ENABLED` (off by default — see the release blockers in [`../docs/WEB_APP_DEPLOYMENT.md`](../docs/WEB_APP_DEPLOYMENT.md)), auth callback, protected account area with overview, profile (read-only), sign-in methods (read-only), privacy («рядом» status, read-only), Premium status, account restriction status, ending other sessions, blocked users with unblock, support, documents and sign-out.
+Current scope (web account foundation): email-code sign-in, optional email-code registration behind `VITE_AUTH_SIGNUP_ENABLED` (off by default — see the release blockers in [`../docs/WEB_APP_DEPLOYMENT.md`](../docs/WEB_APP_DEPLOYMENT.md)), auth callback, protected account area with overview, profile (read-only), sign-in methods (read-only, from `get_my_login_methods`), privacy («рядом» status, read-only), Premium status, safety centre with appeals, active sessions and ending other sessions, own data export (JSON), notification preferences, blocked users with unblock, account deletion through the protected `delete-my-account` Edge Function (three-minute cancellable timer), support, documents and sign-out.
 
-Sections without a backend in `ecoutemoi-mobile` `main` show an honest "not available on the web" state and make no backend calls: data export, notification preferences, session list, appeals and account deletion. Voices, Отклики, Резонансы and chats stay in the mobile app; the router and navigation are prepared for them.
+VK, Apple and Google sign-in, payments, Voices, Отклики, Резонансы and chats are not on the web yet; the router and navigation are prepared for product areas.
 
 Every backend object the app uses — and every one it must not use — is listed with its source in [`../docs/WEB_BACKEND_MATRIX.md`](../docs/WEB_BACKEND_MATRIX.md).
 

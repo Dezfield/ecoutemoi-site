@@ -19,17 +19,12 @@ export type AuthStatus =
   | 'authenticated_profile_ready'
   | 'password_recovery';
 
-export type LoginProvider = 'email' | 'phone' | 'apple' | 'google' | 'vk';
-
-/**
- * `unknown` is used for a method whose state cannot be read from Supabase
- * Auth identities (VK), so the page never claims it is connected or not.
- */
-export type LoginMethodState = 'connected' | 'not_connected' | 'unknown';
+/** Providers reported by get_my_login_methods() in mobile main. */
+export type LoginProvider = 'apple' | 'google' | 'vk' | 'email';
 
 export type LoginMethod = {
   provider: LoginProvider;
-  state: LoginMethodState;
+  connected: boolean;
   label: string | null;
 };
 

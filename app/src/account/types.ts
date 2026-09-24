@@ -51,15 +51,50 @@ export type Entitlement = {
   premiumUntil: string | null;
 };
 
-/**
- * Row of public.get_my_account_restriction() (ecoutemoi-mobile main,
- * supabase/migrations/20260810_trust_safety_push.sql): the caller's own active
- * suspension or ban. The RPC does not return the sanction id.
- */
-export type AccountRestriction = {
-  kind: 'suspended' | 'banned';
+/** Row of get_my_active_sessions(): the caller's own auth sessions. */
+export type AccountSession = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+  current: boolean;
+};
+
+export type NotificationDeliveryMode = 'instant' | 'hourly' | 'daily';
+
+/** jsonb of get_/update_my_notification_preferences_v1 (field names as returned). */
+export type NotificationPreferences = {
+  messagesEnabled: boolean;
+  datingEnabled: boolean;
+  productEnabled: boolean;
+  quietHoursEnabled: boolean;
+  quietStart: string;
+  quietEnd: string;
+  timezone: string;
+  deliveryMode: NotificationDeliveryMode;
+};
+
+/** Value sets of the CHECK constraints in mobile main (user_sanctions, moderation_appeals, user_reports). */
+export type SanctionKind = 'warning' | 'suspended' | 'banned';
+export type AppealStatus = 'pending' | 'reviewing' | 'upheld' | 'overturned';
+export type ReportStatus = 'open' | 'reviewing' | 'actioned' | 'dismissed';
+
+export type SafetySanction = {
+  /** Server-issued id from get_my_safety_center_v1; used only for submit_moderation_appeal. */
+  id: string;
+  kind: SanctionKind;
   reason: string;
+  startsAt: string;
   expiresAt: string | null;
+  appeal: { id: string; status: AppealStatus; createdAt: string } | null;
+};
+
+export type SafetyCenter = {
+  activeSanction: SafetySanction | null;
+  recentReports: Array<{ id: string; category: string; status: ReportStatus; createdAt: string }>;
+  recentAppeals: Array<{ id: string; status: AppealStatus; sanctionKind: SanctionKind | null; createdAt: string }>;
+  hasMoreReports: boolean;
 };
 
 export type BlockedUser = { id: string; name: string; blockedAt: string };

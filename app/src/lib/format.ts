@@ -72,3 +72,14 @@ export function formatDuration(seconds: number | null | undefined): string {
   const rest = String(total % 60).padStart(2, '0');
   return `${minutes}:${rest}`;
 }
+
+/** Coarse device name from the user agent returned by get_my_active_sessions(). */
+export function sessionDeviceLabel(userAgent: string | null | undefined): string {
+  if (!userAgent) return 'Неизвестное устройство';
+  if (/iphone|ipad/i.test(userAgent)) return 'iPhone или iPad';
+  if (/android/i.test(userAgent)) return 'Android';
+  if (/windows/i.test(userAgent)) return 'Windows';
+  if (/macintosh|mac os/i.test(userAgent)) return 'Mac';
+  if (/linux/i.test(userAgent)) return 'Linux';
+  return 'Браузер или приложение';
+}

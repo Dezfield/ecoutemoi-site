@@ -1,18 +1,26 @@
-import type { LoginMethod } from '../auth/types';
+import type { LoginMethod, LoginProvider } from '../auth/types';
 import { requireSupabase } from '../lib/supabase';
 import type {
-  AccountRestriction,
+  AccountSession,
   AccountSummary,
+  AppealStatus,
   BlockedUser,
   DatingProfile,
   Entitlement,
+  NotificationDeliveryMode,
+  NotificationPreferences,
   PremiumTier,
+  ReportStatus,
+  SafetyCenter,
+  SafetySanction,
+  SanctionKind,
 } from './types';
 
 /**
  * Account data access for the web app. Every call runs as the signed-in user
  * with the publishable key and is authorised by RLS policies and SECURITY
- * DEFINER RPCs committed in ecoutemoi-mobile main (supabase/migrations). Each
+ * DEFINER RPCs committed in ecoutemoi-mobile main (supabase/migrations) and the
+ * protected delete-my-account Edge Function (supabase/functions). Each
  * backend object used here is listed with its source in
  * docs/WEB_BACKEND_MATRIX.md; objects that are not in mobile main are not
  * called. Nothing here accepts a user id from the UI for write operations:
@@ -47,6 +55,7 @@ export function accountErrorMessage(error: unknown): string {
   if (code === '28000' || code === 'pgrst301' || /jwt|not authenticated|нужна авторизация|authentication required/.test(message)) {
     return 'Сессия истекла. Войдите снова.';
   }
+  if (/account is unavailable/.test(message)) return 'Аккаунт недоступен: он удалён или ещё не создан.';
   if (/too many|rate limit/.test(message)) return 'Слишком много запросов. Попробуйте позже.';
   return 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 }
@@ -146,32 +155,52 @@ export async function loadEntitlement(): Promise<Entitlement> {
   return { tier: active ? tier : 'free', active, premiumUntil: nullableStr(row.premium_until) };
 }
 
+const loginProviders: LoginProvider[] = ['apple', 'google', 'vk', 'email'];
+
 /**
- * Sign-in methods from the Supabase Auth user (GET /auth/v1/user). There is
- * no login-methods RPC in mobile main. Only standard Supabase identity
- * providers are reported as connected or not connected. VK is not a standard
- * Supabase identity provider, so its state cannot be read here and it is
- * shown as unknown instead of "not connected".
+ * Sign-in methods through get_my_login_methods() (mobile main
+ * supabase/migrations/20260921120100_account_rpc_deletion_guards.sql). The RPC
+ * returns one entry per provider — apple, google, vk, email — with
+ * `connected` and a display `label`; the web shows exactly that. Showing a
+ * connected VK identity does not enable VK sign-in on the web.
  */
 export async function loadLoginMethods(): Promise<LoginMethod[]> {
-  const { data, error } = await requireSupabase().auth.getUser();
+  const { data, error } = await requireSupabase().rpc('get_my_login_methods');
   if (error) throw error;
-  const user = data.user;
-  const identities = user?.identities ?? [];
-  const has = (provider: string) => identities.some((identity) => identity.provider === provider);
-  return [
-    { provider: 'email', state: has('email') ? 'connected' : 'not_connected', label: has('email') ? user?.email ?? null : null },
-    { provider: 'phone', state: has('phone') ? 'connected' : 'not_connected', label: null },
-    { provider: 'apple', state: has('apple') ? 'connected' : 'not_connected', label: null },
-    { provider: 'google', state: has('google') ? 'connected' : 'not_connected', label: null },
-    { provider: 'vk', state: 'unknown', label: null },
-  ];
+  const rows = Array.isArray(data) ? data : [];
+  return loginProviders.map((provider) => {
+    const row = asObject(rows.find((item) => asObject(item).provider === provider));
+    return { provider, connected: row.connected === true, label: nullableStr(row.label) };
+  });
+}
+
+/**
+ * Active sessions through get_my_active_sessions() (same migration): only the
+ * caller's own auth sessions with created/updated time, user agent, IP and a
+ * `current_session` flag computed from the JWT session id. Nothing else about
+ * the device is derived or shown.
+ */
+export async function loadActiveSessions(): Promise<AccountSession[]> {
+  const { data, error } = await requireSupabase().rpc('get_my_active_sessions');
+  if (error) throw error;
+  return (Array.isArray(data) ? data : [])
+    .map((item) => {
+      const row = asObject(item);
+      return {
+        id: str(row.session_id),
+        createdAt: str(row.created_at),
+        updatedAt: str(row.updated_at),
+        userAgent: nullableStr(row.user_agent),
+        ipAddress: nullableStr(row.ip_address),
+        current: row.current_session === true,
+      };
+    })
+    .filter((session) => session.id);
 }
 
 /**
  * Ends every other session of this user (POST /auth/v1/logout?scope=others,
- * supported by supabase-js). The current browser stays signed in. There is
- * no backend in mobile main that lists sessions, so the web cannot show them.
+ * supported by supabase-js). The current browser stays signed in.
  */
 export async function signOutOtherSessions(): Promise<void> {
   const { error } = await requireSupabase().auth.signOut({ scope: 'others' });
@@ -179,17 +208,169 @@ export async function signOutOtherSessions(): Promise<void> {
 }
 
 /**
- * Own active suspension or ban through get_my_account_restriction()
- * (mobile main supabase/migrations/20260810_trust_safety_push.sql). Warnings
- * are not returned by this RPC; an empty result means no active restriction.
+ * Own data export through export_my_account_data(). The server takes the
+ * account from auth.uid(); the web passes no argument and only saves the
+ * returned JSON as a file in the browser.
  */
-export async function loadAccountRestriction(): Promise<AccountRestriction | null> {
-  const { data, error } = await requireSupabase().rpc('get_my_account_restriction');
+export async function exportAccountData(): Promise<Json> {
+  const { data, error } = await requireSupabase().rpc('export_my_account_data');
   if (error) throw error;
-  const row = firstRow(data);
-  const kind = row.sanction === 'suspended' || row.sanction === 'banned' ? row.sanction : null;
-  if (!kind) return null;
-  return { kind, reason: str(row.reason), expiresAt: nullableStr(row.expires_at) };
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Unexpected export payload.');
+  return data as Json;
+}
+
+const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const deliveryModes: NotificationDeliveryMode[] = ['instant', 'hourly', 'daily'];
+
+/** Maps the jsonb returned by get_/update_my_notification_preferences_v1. */
+function mapNotificationPreferences(value: unknown): NotificationPreferences {
+  const row = asObject(value);
+  return {
+    messagesEnabled: row.messagesEnabled === true,
+    datingEnabled: row.datingEnabled === true,
+    productEnabled: row.productEnabled === true,
+    quietHoursEnabled: row.quietHoursEnabled === true,
+    quietStart: typeof row.quietStart === 'string' && timePattern.test(row.quietStart) ? row.quietStart : '22:00',
+    quietEnd: typeof row.quietEnd === 'string' && timePattern.test(row.quietEnd) ? row.quietEnd : '08:00',
+    timezone: str(row.timezone, 'UTC') || 'UTC',
+    deliveryMode: deliveryModes.find((mode) => mode === row.deliveryMode) ?? 'instant',
+  };
+}
+
+export function detectedTimezone(): string {
+  try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof timezone === 'string' && timezone.length > 0 && timezone.length <= 64 ? timezone : 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+/** get_my_notification_preferences_v1() — creates the default row on first read. */
+export async function loadNotificationPreferences(): Promise<NotificationPreferences> {
+  const { data, error } = await requireSupabase().rpc('get_my_notification_preferences_v1');
+  if (error) throw error;
+  return mapNotificationPreferences(data);
+}
+
+/** update_my_notification_preferences_v1(...) with exactly the eight server arguments. */
+export async function saveNotificationPreferences(preferences: NotificationPreferences): Promise<NotificationPreferences> {
+  const { data, error } = await requireSupabase().rpc('update_my_notification_preferences_v1', {
+    p_messages_enabled: preferences.messagesEnabled,
+    p_dating_enabled: preferences.datingEnabled,
+    p_product_enabled: preferences.productEnabled,
+    p_quiet_hours_enabled: preferences.quietHoursEnabled,
+    p_quiet_start: preferences.quietStart,
+    p_quiet_end: preferences.quietEnd,
+    p_timezone: preferences.timezone,
+    p_delivery_mode: preferences.deliveryMode,
+  });
+  if (error) throw error;
+  return mapNotificationPreferences(data);
+}
+
+const sanctionKinds: SanctionKind[] = ['warning', 'suspended', 'banned'];
+const appealStatuses: AppealStatus[] = ['pending', 'reviewing', 'upheld', 'overturned'];
+const reportStatuses: ReportStatus[] = ['open', 'reviewing', 'actioned', 'dismissed'];
+
+function mapSanction(value: unknown): SafetySanction | null {
+  const row = asObject(value);
+  const kind = sanctionKinds.find((candidate) => candidate === row.kind);
+  if (!kind || !str(row.id)) return null;
+  const appeal = asObject(row.appeal);
+  return {
+    id: str(row.id),
+    kind,
+    reason: str(row.reason),
+    startsAt: str(row.startsAt),
+    expiresAt: nullableStr(row.expiresAt),
+    appeal: str(appeal.id)
+      ? {
+          id: str(appeal.id),
+          status: appealStatuses.find((candidate) => candidate === appeal.status) ?? 'pending',
+          createdAt: str(appeal.createdAt),
+        }
+      : null,
+  };
+}
+
+/**
+ * Safety centre through get_my_safety_center_v1(): the active sanction (with
+ * the server-issued id needed for an appeal), the caller's recent reports and
+ * appeals. Only these fields of the jsonb contract are read.
+ */
+export async function loadSafetyCenter(): Promise<SafetyCenter> {
+  const { data, error } = await requireSupabase().rpc('get_my_safety_center_v1');
+  if (error) throw error;
+  const root = asObject(data);
+  const reports = Array.isArray(root.recentReports) ? root.recentReports : [];
+  const appeals = Array.isArray(root.recentAppeals) ? root.recentAppeals : [];
+  return {
+    activeSanction: mapSanction(root.activeSanction),
+    recentReports: reports
+      .map((item) => {
+        const row = asObject(item);
+        return {
+          id: str(row.id),
+          category: str(row.category, 'other'),
+          status: reportStatuses.find((candidate) => candidate === row.status) ?? 'open',
+          createdAt: str(row.createdAt),
+        };
+      })
+      .filter((report) => report.id),
+    recentAppeals: appeals
+      .map((item) => {
+        const row = asObject(item);
+        return {
+          id: str(row.id),
+          status: appealStatuses.find((candidate) => candidate === row.status) ?? 'pending',
+          sanctionKind: sanctionKinds.find((candidate) => candidate === row.sanctionKind) ?? null,
+          createdAt: str(row.createdAt),
+        };
+      })
+      .filter((appeal) => appeal.id),
+    hasMoreReports: root.hasMoreReports === true,
+  };
+}
+
+/**
+ * submit_moderation_appeal(p_sanction_id, p_reason). The sanction id always
+ * comes from loadSafetyCenter(); the user never types it. The server checks
+ * that the sanction belongs to auth.uid() and is active.
+ */
+export async function submitAppeal(sanctionId: string, reason: string): Promise<void> {
+  const normalized = reason.trim();
+  if (normalized.length < 20 || normalized.length > 1500) {
+    throw new Error('Опишите ситуацию текстом от 20 до 1500 символов.');
+  }
+  const { error } = await requireSupabase().rpc('submit_moderation_appeal', {
+    p_sanction_id: sanctionId,
+    p_reason: normalized,
+  });
+  if (error) throw error;
+}
+
+export function appealErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.startsWith('Опишите')) return error.message;
+  const message = (error instanceof Error ? error.message : str(asObject(error).message)).toLowerCase();
+  if (message.includes('too many appeal')) return 'Слишком много обращений. Попробуйте снова завтра.';
+  if (message.includes('sanction is not active')) return 'Ограничение уже завершено или отменено. Обновите статус.';
+  return accountErrorMessage(error);
+}
+
+/**
+ * Account deletion through the protected `delete-my-account` Edge Function
+ * (mobile main supabase/functions/delete-my-account/index.ts). The function
+ * takes the account from the caller's JWT via auth.getUser(); the browser
+ * sends only the confirmation phrase — no user id and no service key. Success
+ * is reported only for HTTP 200 with `{ deleted: true }`.
+ */
+export async function deleteAccount(): Promise<void> {
+  const { data, error } = await requireSupabase().functions.invoke('delete-my-account', {
+    body: { confirmation: 'delete-my-account' },
+  });
+  if (error) throw error;
+  if (asObject(data).deleted !== true) throw new Error('Account deletion was not confirmed.');
 }
 
 /** get_my_blocked_users() — the RPC mobile main reads in loadCloudSnapshot(). */

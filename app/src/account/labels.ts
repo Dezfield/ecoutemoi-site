@@ -4,7 +4,7 @@
  * src/content/geography.ts) so both clients describe the same data with the
  * same words. Unknown codes fall back to a neutral value.
  */
-import type { AccountRestriction, Entitlement } from './types';
+import type { AppealStatus, Entitlement, ReportStatus, SanctionKind } from './types';
 
 const gender: Record<string, string> = {
   woman: 'Женщина',
@@ -99,8 +99,31 @@ export function entitlementLabel(entitlement: Entitlement): 'Free' | 'Premium' |
   return entitlement.tier === 'founder' ? 'Founder' : 'Premium';
 }
 
-/** Wording of mobile main adminAccountStatusLabel(): suspended → «Приостановлен», banned → «Заблокирован». */
-export const restrictionLabels: Record<AccountRestriction['kind'], string> = {
+export const sanctionLabels: Record<SanctionKind, string> = {
+  warning: 'Предупреждение',
   suspended: 'Аккаунт приостановлен',
   banned: 'Аккаунт заблокирован',
+};
+
+export const appealLabels: Record<AppealStatus, string> = {
+  pending: 'Ожидает рассмотрения',
+  reviewing: 'Рассматривается',
+  upheld: 'Решение оставлено в силе',
+  overturned: 'Ограничение отменено',
+};
+
+export const reportLabels: Record<ReportStatus, string> = {
+  open: 'Получена',
+  reviewing: 'На рассмотрении',
+  actioned: 'Меры приняты',
+  dismissed: 'Рассмотрена',
+};
+
+/** Categories of the user_reports CHECK constraint. */
+export const reportCategoryLabels: Record<string, string> = {
+  spam: 'Спам или мошенничество',
+  harassment: 'Оскорбления или преследование',
+  impersonation: 'Выдаёт себя за другого',
+  inappropriate: 'Неприемлемый контент',
+  other: 'Другая причина',
 };

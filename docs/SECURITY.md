@@ -1,6 +1,6 @@
 # Security and privacy boundary
 
-Public static assets only. No Supabase client, service URLs, keys, account sessions, user media, trackers, analytics, cookie banner, cookies or localStorage usage. No forms collect information. All links point within this site; future store links require verification. No env file is needed. SITE_BASE is a non-secret build parameter.
+Public static assets only. No Supabase client, service URLs, keys, account sessions, user media, trackers, analytics, cookie banner, cookies or localStorage usage. No forms collect information. All links point within this site, except the «Личный кабинет» link to https://app.ecoutemoi.ru/ (same tab, plain navigation, no data passed); future store links require verification. No env file is needed. SITE_BASE is a non-secret build parameter.
 
 Git ignores node_modules, dist, env files and generated QA artifacts. Static checks scan output for known internal URL/credential patterns; dependency audit checks npm advisories. These checks reduce accidental disclosure and are not a guarantee against all secrets. Review new source and staged diff before creating a public repository or committing; never import private project history. No source maps shipped.
 
@@ -8,4 +8,6 @@ React escapes text; no dangerouslySetInnerHTML or remote content. Build-time HTM
 
 CI has read-only default permissions. Deployment alone gets pages:write and id-token:write and uses the github-pages environment. The approval variable defaults off; configure required reviewers where supported as an additional human release gate. No Cloudflare or backend token exists in the workflow. No DNS mutations are automated.
 
-Future changes that add forms, tracking, authentication, external resources or account data require a new privacy/security review. Legal placeholders and missing contact are content release blockers, not hidden completed features.
+Future changes that add forms, tracking, authentication, external resources or account data require a new privacy/security review.
+
+The web app in `app/` is a separate bundle with its own boundary: only the Supabase URL and publishable key in the client, data access only through RLS tables and RPCs committed in `ecoutemoi-mobile` `main` (allowlist in `docs/WEB_BACKEND_MATRIX.md`, enforced by `app/tests/unit/backend-contracts.test.mjs`), no Edge Function calls and no destructive account actions, PKCE auth with a single explicit callback, internal-only post-login redirects, web signup off by default, noindex. See `docs/WEB_APP_DEPLOYMENT.md`. Legal placeholders and missing contact are content release blockers, not hidden completed features.

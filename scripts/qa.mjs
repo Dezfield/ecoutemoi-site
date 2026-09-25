@@ -2,7 +2,8 @@ import { chromium } from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 import { writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+// Installed Microsoft Edge by default; QA_CHROMIUM_PATH selects another Chromium binary (e.g. CI or Linux).
+const browser = await chromium.launch(process.env.QA_CHROMIUM_PATH ? { executablePath: process.env.QA_CHROMIUM_PATH, headless: true } : { channel: 'msedge', headless: true });
 const base = 'http://127.0.0.1:4173/';
 const errors = [], results = [];
 const context = await browser.newContext();
@@ -27,15 +28,24 @@ assert.equal(await page.getByRole('button', { name: 'Закрыть' }).getAttri
 await page.keyboard.press('Escape');
 assert.equal(await page.getByRole('button', { name: 'Меню' }).getAttribute('aria-expanded'), 'false');
 await page.getByRole('button', { name: 'Меню' }).click();
+const accountLink = page.getByRole('navigation').getByRole('link', { name: 'Личный кабинет' });
+assert(await accountLink.isVisible(), 'Личный кабинет in mobile menu');
+const appUrl = await page.evaluate(() => document.documentElement.dataset.appUrl);
+assert.equal(await accountLink.getAttribute('href'), appUrl);
+assert.equal(await accountLink.getAttribute('target'), null, 'Личный кабинет opens in the same tab');
 await page.getByRole('navigation').getByRole('link', { name: 'FAQ', exact: true }).click();
 assert.equal(await page.getByRole('button', { name: 'Меню' }).getAttribute('aria-expanded'), 'false');
 const faq = page.locator('summary').first(); await faq.focus(); await page.keyboard.press('Enter');
 assert.equal(await page.locator('details').first().getAttribute('open'), '');
 await page.getByRole('button', { name: 'Приостановить анимацию волны' }).click();
 assert.equal(await page.getByRole('button', { name: 'Включить анимацию волны' }).getAttribute('aria-pressed'), 'true');
+await page.setViewportSize({ width: 1440, height: 1000 });
+assert(await page.getByRole('navigation').getByRole('link', { name: 'Личный кабинет' }).isVisible(), 'Личный кабинет in desktop navigation');
+const appOrigin = new URL(await page.evaluate(() => document.documentElement.dataset.appUrl)).origin;
 const internalLinks = await page.locator('a[href]').evaluateAll(elements => [...new Set(elements.map(a => a.href))]);
 for (const link of internalLinks) {
   const url = new URL(link);
+  if (url.origin === appOrigin && url.pathname === '/') continue; // the separate web app (app.ecoutemoi.ru), not part of this artifact
   if (url.origin !== new URL(base).origin) throw new Error(`Unexpected external link ${link}`);
   const response = await page.request.get(url.origin + url.pathname);
   assert(response.ok(), `Broken link ${link}`);
@@ -63,7 +73,7 @@ await staticPage.locator('summary').first().click(); assert.equal(await staticPa
 await nojs.close();
 // A 404 intentionally triggers a resource-error console event; record separately.
 const unexpectedErrors = errors.filter(error => !error.includes('404 (Not Found)'));
-writeFileSync('qa/browser-results.json', JSON.stringify({ results, errors, unexpectedErrors, checkedLinks: internalLinks.length, interactions: 'menu/Escape/link-close/FAQ keyboard/motion toggle/no-JS/deep refresh/404 passed' }, null, 2));
+writeFileSync('qa/browser-results.json', JSON.stringify({ results, errors, unexpectedErrors, checkedLinks: internalLinks.length, interactions: 'menu/Escape/link-close/account link desktop+mobile/FAQ keyboard/motion toggle/no-JS/deep refresh/404 passed' }, null, 2));
 await browser.close();
 assert.equal(unexpectedErrors.length, 0, 'Unexpected browser errors');
 assert.equal(results.reduce((sum, result) => sum + result.violations.length, 0), 0, 'Accessibility violations');

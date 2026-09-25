@@ -1,4 +1,6 @@
 export const title = 'Écoute Moi — знакомства, которые начинаются с голоса';
+/** Production web app (личный кабинет). Build-time override: APP_URL (prerender) / VITE_APP_URL (vite dev). */
+export const defaultAppUrl = 'https://app.ecoutemoi.ru/';
 export const description = 'Слушать. Слышать. Видеть. Знакомства 18+, в которых сначала звучит голос, а анкета и фотографии открываются после взаимного Отклика.';
 export const pages: Record<string, string> = {
   '/privacy': 'Политика конфиденциальности', '/terms': 'Пользовательское соглашение',

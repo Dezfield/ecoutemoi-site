@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react';
-import { faqs, pages, steps } from './content';
+import { defaultAppUrl, faqs, pages, steps } from './content';
 import { DocumentContent } from './DocumentContent';
 
 type LayoutProps = { children: ReactNode; className?: string };
@@ -9,11 +9,11 @@ export function Badge({ children }: LayoutProps) { return <span className="badge
 export function Card({ children, className = '' }: LayoutProps) { return <div className={`card ${className}`}>{children}</div>; }
 export function Button({ children, href, secondary = false }: { children: ReactNode; href: string; secondary?: boolean }) { return <a className={`button ${secondary ? 'secondary' : ''}`} href={href}>{children}</a>; }
 function Brand({ base }: { base: string }) { return <a className="brand" href={base}><img src={`${base}brand-mark.svg`} width="44" height="44" alt=""/><span>Écoute Moi<span className="brand-caption">ЗНАКОМСТВО НАЧИНАЕТСЯ С ГОЛОСА</span></span></a>; }
-export function Navigation({ base }: { base: string }) {
+export function Navigation({ base, appUrl }: { base: string; appUrl: string }) {
   const [open, setOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === 'Escape' && open) { setOpen(false); menuButton.current?.focus(); } }; window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close); }, [open]);
-  return <header className="header"><Container className="header-inner"><Brand base={base}/><button ref={menuButton} className="menu-toggle" aria-expanded={open} aria-controls="navigation" onClick={() => setOpen(!open)}>{open ? 'Закрыть ×' : 'Меню ☰'}</button><nav id="navigation" aria-label="Основная навигация" className={open ? 'nav open' : 'nav'}>{[['about', 'О проекте'], ['how', 'Как это работает'], ['safety', 'Безопасность'], ['faq', 'FAQ']].map(([id, label]) => <a key={id} href={`${base}#${id}`} onClick={() => setOpen(false)}>{label}</a>)}<a className="nav-cta" href={`${base}#download`} onClick={() => setOpen(false)}>Скоро <span aria-hidden="true">↗</span></a></nav></Container></header>;
+  return <header className="header"><Container className="header-inner"><Brand base={base}/><button ref={menuButton} className="menu-toggle" aria-expanded={open} aria-controls="navigation" onClick={() => setOpen(!open)}>{open ? 'Закрыть ×' : 'Меню ☰'}</button><nav id="navigation" aria-label="Основная навигация" className={open ? 'nav open' : 'nav'}>{[['about', 'О проекте'], ['how', 'Как это работает'], ['safety', 'Безопасность'], ['faq', 'FAQ']].map(([id, label]) => <a key={id} href={`${base}#${id}`} onClick={() => setOpen(false)}>{label}</a>)}<a className="nav-account" href={appUrl} onClick={() => setOpen(false)}>Личный кабинет</a><a className="nav-cta" href={`${base}#download`} onClick={() => setOpen(false)}>Скоро <span aria-hidden="true">↗</span></a></nav></Container></header>;
 }
 export function Footer({ base }: { base: string }) { return <footer className="footer"><Container><div className="footer-top"><Brand base={base}/><p>Слушать. Слышать. Видеть.</p></div><div className="footer-links">{Object.entries(pages).map(([path, label]) => <a key={path} href={`${base}${path.slice(1)}/`}>{label}</a>)}</div><div className="footer-bottom"><span>© Écoute Moi, 2026</span><span>ecoutemoi.ru</span><span>Для совершеннолетних · 18+</span></div></Container></footer>; }
 function Wave({ variant = '' }: { variant?: string }) { return <div className={`wave ${variant}`} aria-hidden="true">{Array.from({ length: 55 }, (_, i) => <i key={i} style={{ '--h': `${13 + Math.pow(Math.sin(i * 1.63), 2) * (18 + 70 * Math.pow(Math.sin(i / 54 * Math.PI), 2))}%`, '--delay': `${(i % 13) * -.17}s` } as CSSProperties}/> )}</div>; }
@@ -38,4 +38,4 @@ function DocumentPage({ path, base }: { path: string; base: string }) {
   const known = Object.hasOwn(pages, path);
   return <section className="document"><Container><a className="text-link" href={base}>← На главную</a><div className="section-label">ÉCOUTE MOI / {known ? 'ИНФОРМАЦИЯ' : '404'}</div><h1>{pages[path] || 'Здесь пока тихо.'}</h1>{known ? <DocumentContent {...{ path, base }}/> : <><p className="document-lead">Страница не найдена.</p><p>Проверьте адрес или вернитесь к знакомству с Écoute Moi.</p><Button href={base}>На главную ↗</Button></>}</Container></section>;
 }
-export function App({ path = '/', base = '/' }: { path?: string; base?: string }) { return <React.Fragment><a className="skip-link" href="#main">Перейти к содержимому</a><Navigation base={base}/><main id="main">{path === '/' ? <Home base={base}/> : <DocumentPage {...{ path, base }}/>}</main><Footer base={base}/></React.Fragment>; }
+export function App({ path = '/', base = '/', appUrl = defaultAppUrl }: { path?: string; base?: string; appUrl?: string }) { return <React.Fragment><a className="skip-link" href="#main">Перейти к содержимому</a><Navigation base={base} appUrl={appUrl}/><main id="main">{path === '/' ? <Home base={base}/> : <DocumentPage {...{ path, base }}/>}</main><Footer base={base}/></React.Fragment>; }

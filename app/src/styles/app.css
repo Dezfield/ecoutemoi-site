@@ -369,6 +369,49 @@ button:disabled { cursor: not-allowed; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition: none !important; }
 }
 
+/* Product areas share the established account shell and brand. */
+.product-page { display: grid; gap: 20px; min-width: 0; }
+.product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 18px; }
+.product-card { display: grid; align-content: start; gap: 14px; min-width: 0; padding: 24px; border: 1px solid var(--border-bright); border-radius: 20px; background: var(--surface); }
+.product-card h2 { font-family: var(--serif); font-size: 27px; line-height: 1.2; }
+.product-card p { overflow-wrap: anywhere; }
+.voice-card { border-color: var(--accent); background: linear-gradient(140deg, var(--surface), #102e25); }
+.voice-card audio { width: 100%; max-width: 100%; accent-color: var(--accent); }
+.product-muted { color: var(--muted); }
+.product-error { color: var(--danger); }
+.product-empty { padding: 32px; border: 1px dashed var(--border-bright); border-radius: 18px; color: var(--muted); text-align: center; }
+.product-select-label { display: grid; gap: 8px; color: var(--soft); }
+.product-select-label select, .product-card select, .product-card textarea { width: 100%; min-height: 48px; border: 1px solid var(--field-border); border-radius: 12px; background: var(--field); padding: 8px 12px; }
+.product-photos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.product-photos img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 12px; }
+.chat-list, .message-list { list-style: none; padding: 0; margin: 0; }
+.chat-list { border: 1px solid var(--border-bright); border-radius: 18px; overflow: hidden; }
+.chat-list li + li { border-top: 1px solid var(--border); }
+.chat-list-link { display: flex; gap: 20px; justify-content: space-between; padding: 18px; color: var(--text); text-decoration: none; }
+.chat-list-link:hover { background: var(--hover); }
+.chat-list-main, .chat-list-meta { display: grid; gap: 4px; min-width: 0; }
+.chat-list-main span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-list-meta { justify-items: end; flex-shrink: 0; color: var(--muted); font-size: 13px; }
+.unread-badge { display: inline-grid; place-items: center; min-width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-weight: 700; }
+.chat-head { display: flex; justify-content: space-between; align-items: start; gap: 20px; flex-wrap: wrap; }
+.chat-head h1 { font-family: var(--serif); font-size: 32px; }
+.message-list { display: grid; gap: 10px; padding: 20px; border: 1px solid var(--border); border-radius: 18px; background: #071c16; min-height: 260px; }
+.message-list li { display: flex; min-width: 0; }
+.message-own { justify-content: flex-end; }
+.message-bubble { max-width: min(82%, 560px); padding: 10px 15px; border-radius: 16px; background: #244439; overflow-wrap: anywhere; }
+.message-own .message-bubble { background: #54341d; }
+.message-bubble time { display: block; margin-top: 4px; text-align: right; color: var(--muted); font-size: 12px; }
+.chat-compose { display: grid; gap: 10px; }
+.chat-compose textarea { width: 100%; resize: vertical; min-height: 90px; border: 1px solid var(--field-border); border-radius: 14px; padding: 12px; background: var(--field); }
+.chat-compose .button { justify-self: end; }
+.product-bottom-nav { display: none; }
+@media (max-width: 900px) {
+  .product-bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 25; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--border); background: rgba(7, 24, 19, .97); padding: 5px 3px max(5px, env(safe-area-inset-bottom)); }
+  .product-bottom-nav a { display: grid; justify-items: center; gap: 1px; min-height: 48px; padding: 3px 2px; color: var(--muted); text-decoration: none; font-size: 11px; }
+  .product-bottom-nav a.active { color: var(--accent-light); }
+  .account-content { padding-bottom: 105px; }
+}
+
 /* Restored with the notification, safety and deletion features. */
 .form-actions { display: grid; gap: 14px; justify-items: start; margin-top: 8px; }
 .panel-danger { border-color: var(--danger-border); }

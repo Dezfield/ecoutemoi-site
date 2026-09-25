@@ -61,6 +61,17 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 // Verified contracts (ecoutemoi-mobile main). Keep in sync with docs/WEB_BACKEND_MATRIX.md.
 const VERIFIED_RPCS = new Set([
+  'block_user',
+  'get_my_inbox_v2',
+  'get_my_resonances_v6',
+  'get_voice_candidates_v4',
+  'prepare_my_dating_media',
+  'respond_to_photo_resonance',
+  'respond_to_voice_candidate_v2',
+  'save_my_dating_profile',
+  'report_dating_candidate',
+  'report_dating_resonance_content',
+  'submit_user_report',
   'get_my_dating_profile_v5',
   'get_my_entitlement',
   'get_my_blocked_users',
@@ -84,10 +95,15 @@ const GUARDED_RPCS = new Set([
   'get_my_safety_center_v1',
   'submit_moderation_appeal',
 ]);
-const VERIFIED_TABLES = new Set(['profiles', 'dating_profiles', 'privacy_settings']);
+const VERIFIED_TABLES = new Set(['profiles', 'dating_profiles', 'messages', 'privacy_settings']);
 const VERIFIED_BUCKETS = new Set(['dating-photos', 'dating-audio']);
 const VERIFIED_FUNCTIONS = new Set(['delete-my-account']);
 const SANCTION_ID = '33333333-3333-4333-8333-333333333333';
+const CONTACT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const CONVERSATION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const FOREIGN_CONVERSATION_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const IMPRESSION_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const RESONANCE_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
 const identity = (provider) => ({
   id: `${provider}-identity`,
@@ -170,6 +186,11 @@ function createMock() {
       { user_id: '11111111-1111-4111-8111-111111111111', display_name: 'Анна', blocked_at: '2026-09-10T12:00:00Z' },
       { user_id: '22222222-2222-4222-8222-222222222222', display_name: 'Мария', blocked_at: '2026-09-11T12:00:00Z' },
     ],
+    voices: [],
+    resonances: [],
+    conversations: [],
+    messages: [],
+    failNextSend: false,
     calls: [],
     callsAfterDeletion: [],
     unverified: [],
@@ -280,6 +301,47 @@ function createMock() {
           }] : [], cors);
         case 'get_my_entitlement':
           return json(route, 200, [state.entitlement], cors);
+        case 'get_voice_candidates_v4':
+          return json(route, 200, state.voices, cors);
+        case 'prepare_my_dating_media':
+          return json(route, 200, [{ audio_path: `letters/${USER_ID}` }], cors);
+        case 'save_my_dating_profile':
+          if (body.p_audio_path !== `letters/${USER_ID}` || body.p_audio_duration_seconds < 20 || body.p_audio_duration_seconds > 45 || !state.audioUploaded) return json(route, 400, { code: '22023' }, cors);
+          return route.fulfill({ status: 204, headers: cors });
+        case 'respond_to_voice_candidate_v2': {
+          if (body.p_impression_id !== IMPRESSION_ID || typeof body.p_interested !== 'boolean') return json(route, 403, { code: '42501' }, cors);
+          state.voices = state.voices.filter((item) => item.impression_id !== IMPRESSION_ID);
+          if (body.p_interested && state.reciprocalInterest) {
+            state.resonances = [{ resonance_id: RESONANCE_ID, contact_id: CONTACT_ID, display_name: 'Мария', about: 'Люблю книги', age: 31, city: 'Москва', relationship_goal: 'serious', interests: ['книги'], photo_paths: [`${CONTACT_ID}/photos/1`], my_photo_decision: null, stage: 'resonance', conversation_id: null, resonated_at: '2026-09-24T11:00:00Z' }];
+          }
+          return json(route, 200, [{ result_status: state.resonances.length ? 'resonance' : 'saved', resonance_id: state.resonances.length ? RESONANCE_ID : null }], cors);
+        }
+        case 'get_my_resonances_v6':
+          return json(route, 200, state.resonances, cors);
+        case 'report_dating_candidate':
+          if (!state.voices.some((item) => item.impression_id === body.p_impression_id)) return json(route, 403, { code: '42501' }, cors);
+          state.voices = state.voices.filter((item) => item.impression_id !== body.p_impression_id);
+          return json(route, 200, 'ffffffff-ffff-4fff-8fff-ffffffffffff', cors);
+        case 'report_dating_resonance_content':
+          if (!state.resonances.some((item) => item.resonance_id === body.p_resonance_id)) return json(route, 403, { code: '42501' }, cors);
+          state.resonances = state.resonances.filter((item) => item.resonance_id !== body.p_resonance_id);
+          return json(route, 200, 'ffffffff-ffff-4fff-8fff-ffffffffffff', cors);
+        case 'respond_to_photo_resonance': {
+          if (!state.resonances.some((item) => item.resonance_id === body.p_resonance_id)) return json(route, 403, { code: '42501' }, cors);
+          state.resonances = state.resonances.map((item) => ({ ...item, my_photo_decision: body.p_interested ? 'interest' : 'pass', stage: body.p_interested && state.reciprocalPhotoInterest ? 'mutuality' : 'resonance', conversation_id: body.p_interested && state.reciprocalPhotoInterest ? CONVERSATION_ID : null }));
+          if (body.p_interested && state.reciprocalPhotoInterest && !state.conversations.length) {
+            state.conversations = [{ conversation_id: CONVERSATION_ID, contact_id: CONTACT_ID, contact_name: 'Мария', contact_avatar_path: null, last_message_text: null, last_message_at: '2026-09-24T11:00:00Z', unread_count: 0, blocked_by_me: false, blocked_by_contact: false, lifecycle_status: 'active', comfort_state: 'normal', contact_restricted: false }];
+          }
+          return json(route, 200, [{ result_status: state.conversations.length ? 'mutuality' : 'waiting', opened_conversation_id: state.conversations.length ? CONVERSATION_ID : null }], cors);
+        }
+        case 'get_my_inbox_v2':
+          return json(route, 200, state.conversations, cors);
+        case 'block_user':
+          state.conversations = state.conversations.map((item) => item.contact_id === body.p_blocked_user_id ? { ...item, blocked_by_me: true } : item);
+          return route.fulfill({ status: 204, headers: cors });
+        case 'submit_user_report':
+          if (!state.conversations.some((item) => item.conversation_id === body.p_conversation_id && item.contact_id === body.p_reported_user_id)) return json(route, 403, { code: '42501' }, cors);
+          return json(route, 200, 'ffffffff-ffff-4fff-8fff-ffffffffffff', cors);
         case 'get_my_blocked_users':
           return json(route, 200, state.blocked, cors);
         case 'unblock_user':
@@ -292,6 +354,19 @@ function createMock() {
     if (path.startsWith('/rest/v1/')) {
       const table = path.slice('/rest/v1/'.length);
       if (!VERIFIED_TABLES.has(table)) return unverified();
+      if (table === 'messages') {
+        const id = method === 'POST' ? body.conversation_id : url.searchParams.get('conversation_id')?.replace(/^eq\./, '');
+        if (!state.conversations.some((item) => item.conversation_id === id)) return method === 'GET' ? json(route, 200, [], cors) : json(route, 403, { code: '42501' }, cors);
+        if (method === 'POST') {
+          if (state.failNextSend) { state.failNextSend = false; return json(route, 503, { code: 'XX000' }, cors); }
+          if (state.conversations.find((item) => item.conversation_id === id)?.blocked_by_me) return json(route, 403, { code: '42501' }, cors);
+          if (!state.messages.some((item) => item.client_message_id === body.client_message_id)) state.messages.push({ ...body, id: crypto.randomUUID(), media_path: null, deleted_for_everyone_at: null, created_at: new Date().toISOString() });
+          return route.fulfill({ status: 201, headers: { ...cors, 'content-type': 'application/json' }, body: '' });
+        }
+        const before = url.searchParams.get('created_at')?.replace(/^lt\./, '');
+        const rows = state.messages.filter((item) => item.conversation_id === id && (!before || item.created_at < before)).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 31);
+        return json(route, 200, rows, cors);
+      }
       if (url.searchParams.get(table === 'profiles' ? 'id' : 'user_id') !== `eq.${USER_ID}`) {
         state.unverified.push(`${method} ${path}: not filtered by the own user id`);
         return json(route, 400, { code: 'PGRST100', message: 'unexpected filter' }, cors);
@@ -310,6 +385,10 @@ function createMock() {
       if (!VERIFIED_BUCKETS.has(bucket)) return unverified();
       if (method === 'POST') return json(route, 200, { signedURL: `${path.replace('/storage/v1', '')}?token=e2e` }, cors);
       return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'image/png' }, body: PNG_1PX });
+    }
+    if (path === `/storage/v1/object/dating-audio/letters/${USER_ID}` && method === 'POST') {
+      state.audioUploaded = true;
+      return json(route, 200, { Key: `dating-audio/letters/${USER_ID}` }, cors);
     }
 
     // ---- Edge Function delete-my-account (mobile main supabase/functions/delete-my-account/index.ts)
@@ -507,7 +586,8 @@ await step('session restore after reload + overview with dating profile data', a
   const { page, errors, close } = await newContext();
   await page.goto(`${APP}/login`);
   await loginWithCode(page);
-  await page.waitForURL(`${APP}/account`);
+  await page.waitForURL(`${APP}/voices`);
+  await page.goto(`${APP}/account`);
   await page.getByText('Алиса').first().waitFor();
   await page.reload();
   await page.getByRole('heading', { name: 'Обзор', level: 1 }).waitFor();
@@ -524,7 +604,7 @@ await step('safe redirect: a crafted post-login destination is ignored after the
   await page.goto(`${APP}/login`);
   await page.evaluate(() => window.sessionStorage.setItem('ecoutemoi.auth.next', 'https://evil.example/steal'));
   await page.goto(`${APP}/auth/callback?token_hash=valid-token-hash-1234&type=email`);
-  await page.waitForURL(`${APP}/account`);
+  await page.waitForURL(`${APP}/voices`);
   await close();
 });
 
@@ -894,7 +974,7 @@ await step('auth callback: cancelled, provider error, invalid code, implicit tok
 await step('auth callback: email token_hash link signs in; recovery link forces new password', async () => {
   const first = await newContext();
   await first.page.goto(`${APP}/auth/callback?token_hash=valid-token-hash-1234&type=email`);
-  await first.page.waitForURL(`${APP}/account`);
+  await first.page.waitForURL(`${APP}/voices`);
   await first.close();
 
   const { page, mock, close } = await newContext();
@@ -927,6 +1007,121 @@ await step('unknown route shows 404 page; app never requests third-party hosts',
   await page.getByRole('heading', { name: 'Здесь пока тихо.' }).waitFor();
   await page.goto(`${APP}/account`);
   await page.waitForLoadState('networkidle');
+  await close();
+});
+
+await step('product flow: voice response, resonance reveal, mutuality, chat send', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => {
+    state.reciprocalInterest = true;
+    state.reciprocalPhotoInterest = true;
+    state.voices = [{ impression_id: IMPRESSION_ID, prompt_key: 'good_day', audio_path: `${CONTACT_ID}/voice`, audio_duration_seconds: 30, age: 31, city: 'Москва', relationship_goal: 'serious', shared_interests: ['книги'] }];
+  } });
+  await page.goto(`${APP}/voices`);
+  await page.getByRole('heading', { name: 'Что вас вдохновляет?' }).waitFor();
+  for (const width of [390, 430, 768, 1024, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await noOverflow(page, `/voices ${width}px`);
+  }
+  await axe(page, '/voices');
+  assert.equal(await page.locator('.voice-card img').count(), 0, 'photos stay hidden before resonance');
+  await page.getByRole('button', { name: 'Отклик' }).click();
+  await page.goto(`${APP}/resonances`);
+  await page.getByRole('heading', { name: 'Мария' }).waitFor();
+  await page.locator('.product-photos img').waitFor();
+  await noOverflow(page, '/resonances');
+  await axe(page, '/resonances');
+  await page.getByRole('button', { name: 'Хочу продолжить' }).click();
+  await page.getByRole('link', { name: 'Открыть чат' }).waitFor();
+  await page.getByRole('link', { name: 'Открыть чат' }).click();
+  await noOverflow(page, '/chats/:conversationId');
+  await axe(page, '/chats/:conversationId');
+  await page.getByLabel('Сообщение').fill('Привет!');
+  await page.getByRole('button', { name: 'Отправить', exact: true }).click();
+  await page.getByText('Привет!', { exact: true }).waitFor();
+  assert(mock.state.messages.some((item) => item.body === 'Привет!' && item.conversation_id === CONVERSATION_ID));
+  await close();
+});
+
+await step('mobile-created resonance and chat appear on web; foreign chat and resonance denied', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => {
+    state.resonances = [{ resonance_id: RESONANCE_ID, contact_id: CONTACT_ID, display_name: 'Мария', about: 'Люблю книги', age: 31, city: 'Москва', relationship_goal: 'serious', interests: ['книги'], photo_paths: [], my_photo_decision: 'interest', stage: 'mutuality', conversation_id: CONVERSATION_ID, resonated_at: '2026-09-24T11:00:00Z' }];
+    state.conversations = [{ conversation_id: CONVERSATION_ID, contact_id: CONTACT_ID, contact_name: 'Мария', contact_avatar_path: null, last_message_text: 'Сообщение с телефона', last_message_at: '2026-09-24T11:01:00Z', unread_count: 1, blocked_by_me: false, blocked_by_contact: false, lifecycle_status: 'active', comfort_state: 'normal', contact_restricted: false }];
+    state.messages = [{ id: '99999999-9999-4999-8999-999999999999', conversation_id: CONVERSATION_ID, sender_id: CONTACT_ID, body: 'Сообщение с телефона', message_type: 'text', media_path: null, deleted_for_everyone_at: null, created_at: '2026-09-24T11:01:00Z' }];
+  } });
+  await page.goto(`${APP}/resonances`);
+  await page.getByRole('heading', { name: 'Мария' }).waitFor();
+  await page.goto(`${APP}/chats`);
+  await page.getByText('Сообщение с телефона').waitFor();
+  await page.goto(`${APP}/chats/${CONVERSATION_ID}`);
+  await page.getByText('Сообщение с телефона').waitFor();
+  await page.goto(`${APP}/chats/${FOREIGN_CONVERSATION_ID}`);
+  await page.getByText('Доступ к разговору закрыт.').waitFor();
+  assert(!mock.state.calls.some((call) => call.path === '/rest/v1/messages' && call.search.includes(FOREIGN_CONVERSATION_ID)), 'foreign messages were not queried');
+  const foreignResonanceStatus = await page.evaluate(async (url) => (await fetch(`${url}/rest/v1/rpc/respond_to_photo_resonance`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ p_resonance_id: '00000000-0000-4000-8000-000000000001', p_interested: true }),
+  })).status, SUPABASE_URL);
+  assert.equal(foreignResonanceStatus, 403);
+  await close();
+});
+
+await step('chat retry uses one client id; pagination, ordering, block and closed state', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => {
+    state.conversations = [{ conversation_id: CONVERSATION_ID, contact_id: CONTACT_ID, contact_name: 'Мария', contact_avatar_path: null, last_message_text: null, last_message_at: '2026-09-24T11:00:00Z', unread_count: 0, blocked_by_me: false, blocked_by_contact: false, lifecycle_status: 'active', comfort_state: 'normal', contact_restricted: false }];
+    state.messages = Array.from({ length: 35 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, conversation_id: CONVERSATION_ID, sender_id: CONTACT_ID, body: `История ${i + 1}`, message_type: 'text', media_path: null, deleted_for_everyone_at: null, created_at: new Date(Date.UTC(2026, 8, 24, 11, i)).toISOString() }));
+    state.failNextSend = true;
+  } });
+  await page.goto(`${APP}/chats/${CONVERSATION_ID}`);
+  await page.getByText('История 35').waitFor();
+  assert.equal(await page.locator('.message-list li').count(), 30);
+  await page.getByRole('button', { name: 'Ранние сообщения' }).click();
+  await page.getByText('История 1', { exact: true }).waitFor();
+  assert.equal(await page.locator('.message-list li').count(), 35);
+  await page.getByLabel('Сообщение').fill('Повтор после ошибки');
+  await page.getByRole('button', { name: 'Отправить', exact: true }).click();
+  await page.getByRole('button', { name: 'Повторить отправку' }).waitFor();
+  await page.getByRole('button', { name: 'Повторить отправку' }).click();
+  await page.getByText('Повтор после ошибки', { exact: true }).waitFor();
+  const inserts = mock.state.calls.filter((call) => call.method === 'POST' && call.path === '/rest/v1/messages');
+  assert.equal(inserts.length, 2);
+  assert.equal(inserts[0].body.client_message_id, inserts[1].body.client_message_id);
+  assert.equal(mock.state.messages.filter((item) => item.body === 'Повтор после ошибки').length, 1);
+  page.once('dialog', (dialog) => void dialog.accept());
+  await page.getByRole('button', { name: 'Заблокировать' }).click();
+  await page.getByText('Разговор приостановлен. История доступна только для чтения.').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Отправить', exact: true }).count(), 0);
+  mock.state.conversations = mock.state.conversations.map((item) => ({ ...item, blocked_by_me: false, lifecycle_status: 'ended' }));
+  await page.reload();
+  await page.getByText('Разговор приостановлен. История доступна только для чтения.').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Отправить', exact: true }).count(), 0);
+  await close();
+});
+
+await step('own voice recording reuses the existing profile and private audio bucket', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true });
+  await page.addInitScript(() => {
+    const originalNow = Date.now;
+    Date.now = () => originalNow() + (window.__e2eTimeOffset ?? 0);
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) } });
+    window.MediaRecorder = class {
+      static isTypeSupported(type) { return type === 'audio/webm;codecs=opus'; }
+      state = 'inactive';
+      start() { this.state = 'recording'; }
+      stop() { this.state = 'inactive'; this.ondataavailable?.({ data: new Blob(['voice-fixture'], { type: 'audio/webm' }) }); this.onstop?.(); }
+    };
+  });
+  await page.goto(`${APP}/voices/record`);
+  await page.getByRole('button', { name: 'Начать запись' }).click();
+  await page.evaluate(() => { window.__e2eTimeOffset = 21000; });
+  await page.getByRole('button', { name: 'Остановить' }).click();
+  await page.getByRole('button', { name: 'Опубликовать аудиописьмо' }).click();
+  await page.getByText('Аудиописьмо сохранено.').waitFor();
+  const saved = mock.state.calls.find((call) => call.path === '/rest/v1/rpc/save_my_dating_profile');
+  assert(saved);
+  assert.equal(saved.body.p_audio_duration_seconds, 21);
+  assert.deepEqual(saved.body.p_photo_paths, [`${USER_ID}/photos/1`]);
+  assert.equal(saved.body.p_display_name, 'Алиса');
+  assert(mock.state.audioUploaded, 'audio uses the private dating-audio bucket');
   await close();
 });
 

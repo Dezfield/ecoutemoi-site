@@ -1,6 +1,6 @@
 # Web app (app.ecoutemoi.ru): build, configuration and deployment
 
-Status: approved by the owner for the 2026-09-24 production release as a web account centre for **existing** users (web signup stays off). Host: **Cloudflare Pages** project `ecoutemoi-app`. The release receipt is `WEB_RELEASE_2026-09-24.md`. Nothing in this repository creates DNS records, changes Supabase settings or publishes the app.
+Status: in production for **existing** users (web signup stays off). The account centre was released on 2026-09-24/25 (PR #1, receipt `WEB_RELEASE_2026-09-24.md`). The full experience — Голоса, Резонансы and Чаты — was released on 2026-09-26 (PR #2, merge `85751d8`), and the microphone header fix for voice recording followed the same day (PR #3). Host: **Cloudflare Pages** project `ecoutemoi-app`, production branch `main`. Nothing in this repository creates DNS records, changes Supabase settings or publishes the app.
 
 ## 1. Architecture
 
@@ -12,8 +12,14 @@ Status: approved by the owner for the 2026-09-24 production release as a web acc
 
 - One repository, two independent Vite builds with their own `package.json`, lockfile, lint and TypeScript configs. The app shares only the design tokens (`app/src/styles/app.css` imports `src/tokens.css`).
 - The app is a client-side SPA (React 19, React Router 7, `@supabase/supabase-js` 2). It is configured with the Supabase project of the mobile app and uses only the publishable key. There is no web-specific user table, auth database, JWT or password storage: a person signs in to the same `auth.users` identity and sees the same `profiles` / `dating_profiles` rows.
-- **Backend contracts:** the web uses only backend objects committed in `ecoutemoi-mobile` `main`. The complete list with source files and line numbers, and the list of objects that are *not* present in `main`, is in [`WEB_BACKEND_MATRIX.md`](WEB_BACKEND_MATRIX.md). It is enforced by `app/tests/unit/backend-contracts.test.mjs` and by the E2E mock. No migration, policy or function was added or changed for the web app.
-- Since ecoutemoi-mobile PR #5 the web also lists active sessions, exports the user's own data, edits notification preferences, shows the safety centre with appeals, and deletes the account through the protected `delete-my-account` Edge Function (three-minute cancellable timer; success only after `{deleted: true}`). VK, Apple and Google sign-in, signup, payments and product areas (Голоса, Резонансы, chat) are not part of this release.
+- **Backend contracts:** the web uses only backend objects committed in `ecoutemoi-mobile` `main`. The complete list with source files and line numbers, and the list of objects that are *not* present in `main`, is in [`WEB_BACKEND_MATRIX.md`](WEB_BACKEND_MATRIX.md). It is enforced by `app/tests/unit/backend-contracts.test.mjs` and by the E2E mock. No web-specific backend object exists. Before the full experience went live, mobile PR #10, #12 and #13 added deleted-account guards to the existing communication, report, read-marker and block RPCs; signatures and behaviour for active accounts stayed the same.
+- Since ecoutemoi-mobile PR #5 the web also lists active sessions, exports the user's own data, edits notification preferences, shows the safety centre with appeals, and deletes the account through the protected `delete-my-account` Edge Function (three-minute cancellable timer; success only after `{deleted: true}`). Production scope:
+  - **Голоса:** listening and responding to voice letters, and recording a replacement letter on browsers with WebM/Opus or MP4.
+  - **Резонансы:** reveal only after a reciprocal response, and the photo decision.
+  - **Чаты:** the same conversations as in the app, paginated history, text messages, realtime, mark read, report and block.
+  - **Профиль / account centre.**
+
+  Still disabled on the web: signup, VK, Apple and Google sign-in, and payments.
 - The public site only links to the app (`Личный кабинет` in the header). It contains no Supabase client, no auth and no user data.
 
 GitHub Pages serves one custom domain per repository and already serves `ecoutemoi.ru`, so `app.ecoutemoi.ru` is served by Cloudflare Pages (DNS is already in Cloudflare). Do not move `ecoutemoi.ru` away from GitHub Pages as part of the app launch.

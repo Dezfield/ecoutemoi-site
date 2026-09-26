@@ -47,4 +47,10 @@ const headers = readFileSync(join(dist, '_headers'), 'utf8');
 for (const header of ['X-Content-Type-Options: nosniff', 'Referrer-Policy: strict-origin-when-cross-origin', 'X-Frame-Options: DENY', 'X-Robots-Tag: noindex, nofollow']) {
   assert(headers.includes(header), `_headers must set ${header}`);
 }
+// Voice recording (/voices/record) uses getUserMedia: the policy must allow the
+// microphone for this origin and keep camera, geolocation and payment off.
+const permissions = headers.match(/^\s*Permissions-Policy:\s*(.+)$/m)?.[1] ?? '';
+for (const directive of ['microphone=(self)', 'camera=()', 'geolocation=()', 'payment=()']) {
+  assert(permissions.split(/,\s*/).includes(directive), `Permissions-Policy must contain ${directive}`);
+}
 console.log(`Bundle boundary check passed (${files.length} files): no secret keys, no source maps, noindex.`);

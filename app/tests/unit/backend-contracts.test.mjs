@@ -1,7 +1,7 @@
 // Guards the web app against silently depending on backend objects that are
 // not committed in ecoutemoi-mobile main. Every name allowed here must have a
 // VERIFIED row with its source file in docs/WEB_BACKEND_MATRIX.md
-// (checked against ecoutemoi-mobile main 9cb650085e95baca16786588165abf2a44ad1f77).
+// (checked against ecoutemoi-mobile main fbe9058ec82ecf75b24878393efb29045f6753e0).
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';

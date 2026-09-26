@@ -113,7 +113,7 @@ Production therefore builds with `VITE_AUTH_SIGNUP_ENABLED=false` and an empty `
 
 **Checklist:**
 1. Choose and approve the host; create the project with root `app`, build `npm ci && npm run build`, output `dist`, env vars from §3.
-2. Re-check `WEB_BACKEND_MATRIX.md` against the current `ecoutemoi-mobile` `main` (last: `9cb6500`, 2026-09-24).
+2. Re-check `WEB_BACKEND_MATRIX.md` against the current `ecoutemoi-mobile` `main` (last: `fbe9058`, 2026-09-26).
 3. Deploy to the host's preview URL; add that preview callback URL to Supabase temporarily if you want to test auth there.
 4. Configure `app.ecoutemoi.ru` + DNS record + HTTPS; add the production callback URL in Supabase.
 5. Verify: `/login` → email code sign-in with a real test account; refresh keeps the session; `/account/*` sections load; logout; deep link refresh (`/account/security`); `/auth/callback?error=access_denied` shows "Вход отменён"; unknown path shows 404 page; response headers; `robots.txt`.

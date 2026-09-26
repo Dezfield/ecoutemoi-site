@@ -104,10 +104,16 @@ export async function saveOwnVoice(blob: Blob, duration: number) {
   if (saved.error) throw saved.error;
 }
 
+// get_voice_candidates_v4 records new impressions that its own outer query
+// cannot see yet: the first call of a day can return [] and the next call
+// returns them. Ask exactly once more before showing an empty state; never poll.
 export async function getVoices(): Promise<Voice[]> {
-  const { data, error } = await requireSupabase().rpc('get_voice_candidates_v4', { p_limit: 10 });
-  if (error) throw error;
-  return (data ?? []) as Voice[];
+  for (let attempt = 1; ; attempt += 1) {
+    const { data, error } = await requireSupabase().rpc('get_voice_candidates_v4', { p_limit: 10 });
+    if (error) throw error;
+    const voices = (data ?? []) as Voice[];
+    if (voices.length || attempt === 2) return voices;
+  }
 }
 
 export async function respondToVoice(impressionId: string, interested: boolean, reason: string | null) {
@@ -150,6 +156,13 @@ export async function getMessages(conversationId: string, before: string | null 
   if (error) throw error;
   const rows = (data ?? []) as ChatMessage[];
   return { messages: rows.slice(0, 30).reverse(), hasMore: rows.length > 30 };
+}
+
+// Same contract as mobile: the actor comes from the JWT; the server moves only
+// the caller's own read marker and rejects a conversation it is not part of.
+export async function markConversationRead(conversationId: string) {
+  const { error } = await requireSupabase().rpc('mark_conversation_read', { p_conversation_id: conversationId });
+  if (error) throw error;
 }
 
 export async function sendMessage(conversationId: string, senderId: string, body: string, clientId: string) {

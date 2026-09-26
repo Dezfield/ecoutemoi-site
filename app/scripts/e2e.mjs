@@ -65,6 +65,7 @@ const VERIFIED_RPCS = new Set([
   'get_my_inbox_v2',
   'get_my_resonances_v6',
   'get_voice_candidates_v4',
+  'mark_conversation_read',
   'prepare_my_dating_media',
   'respond_to_photo_resonance',
   'respond_to_voice_candidate_v2',
@@ -187,6 +188,9 @@ function createMock() {
       { user_id: '22222222-2222-4222-8222-222222222222', display_name: 'Мария', blocked_at: '2026-09-11T12:00:00Z' },
     ],
     voices: [],
+    // Optional per-call answers of get_voice_candidates_v4 (then falls back to voices).
+    voiceResponses: null,
+    markReadFails: false,
     resonances: [],
     conversations: [],
     messages: [],
@@ -302,7 +306,14 @@ function createMock() {
         case 'get_my_entitlement':
           return json(route, 200, [state.entitlement], cors);
         case 'get_voice_candidates_v4':
+          if (state.voiceResponses?.length) return json(route, 200, state.voiceResponses.shift(), cors);
           return json(route, 200, state.voices, cors);
+        case 'mark_conversation_read':
+          if (Object.keys(body).join() !== 'p_conversation_id') return json(route, 400, { code: 'PGRST202' }, cors);
+          if (!state.conversations.some((item) => item.conversation_id === body.p_conversation_id)) return json(route, 403, { code: '42501' }, cors);
+          if (state.markReadFails) return json(route, 503, { code: 'XX000', message: 'upstream unavailable' }, cors);
+          state.conversations = state.conversations.map((item) => item.conversation_id === body.p_conversation_id ? { ...item, unread_count: 0 } : item);
+          return route.fulfill({ status: 204, headers: cors });
         case 'prepare_my_dating_media':
           return json(route, 200, [{ audio_path: `letters/${USER_ID}` }], cors);
         case 'save_my_dating_profile':
@@ -1039,6 +1050,66 @@ await step('product flow: voice response, resonance reveal, mutuality, chat send
   await page.getByRole('button', { name: 'Отправить', exact: true }).click();
   await page.getByText('Привет!', { exact: true }).waitFor();
   assert(mock.state.messages.some((item) => item.body === 'Привет!' && item.conversation_id === CONVERSATION_ID));
+  await close();
+});
+
+const VOICE = { impression_id: IMPRESSION_ID, prompt_key: 'good_day', audio_path: `${CONTACT_ID}/voice`, audio_duration_seconds: 30, age: 31, city: 'Москва', relationship_goal: 'serious', shared_interests: ['книги'] };
+const voiceCalls = (mock) => mock.state.calls.filter((call) => call.path === '/rest/v1/rpc/get_voice_candidates_v4').length;
+
+await step('voices first load: an empty first answer is asked once more and the new letter appears', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.voiceResponses = [[], [VOICE]]; } });
+  await page.goto(`${APP}/voices`);
+  await page.getByRole('heading', { name: 'Что вас вдохновляет?' }).waitFor();
+  assert.equal(await page.getByText('Пока нет новых Голосов').count(), 0, 'no false empty state');
+  assert.equal(voiceCalls(mock), 2);
+  await close();
+});
+
+await step('voices real empty: two empty answers show the empty state and stop', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.voiceResponses = [[], []]; } });
+  await page.goto(`${APP}/voices`);
+  await page.getByText('Пока нет новых Голосов').waitFor();
+  await page.waitForTimeout(1500);
+  assert.equal(voiceCalls(mock), 2, 'exactly one retry, no polling');
+  await close();
+});
+
+const unreadConversation = { conversation_id: CONVERSATION_ID, contact_id: CONTACT_ID, contact_name: 'Мария', contact_avatar_path: null, last_message_text: 'Два новых', last_message_at: '2026-09-24T11:02:00Z', unread_count: 2, blocked_by_me: false, blocked_by_contact: false, lifecycle_status: 'active', comfort_state: 'normal', contact_restricted: false };
+const unreadMessages = [
+  { id: '99999999-9999-4999-8999-999999999991', conversation_id: CONVERSATION_ID, sender_id: CONTACT_ID, body: 'Первое новое', message_type: 'text', media_path: null, deleted_for_everyone_at: null, created_at: '2026-09-24T11:01:00Z' },
+  { id: '99999999-9999-4999-8999-999999999992', conversation_id: CONVERSATION_ID, sender_id: CONTACT_ID, body: 'Два новых', message_type: 'text', media_path: null, deleted_for_everyone_at: null, created_at: '2026-09-24T11:02:00Z' },
+];
+
+await step('unread chat: opening it marks it read without a user id and the list shows no unread badge', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => {
+    state.conversations = [{ ...unreadConversation }];
+    state.messages = unreadMessages.map((item) => ({ ...item }));
+  } });
+  await page.goto(`${APP}/chats`);
+  await page.getByLabel('Непрочитанных сообщений: 2').waitFor();
+  await page.getByRole('link', { name: /Мария/ }).click();
+  await page.getByText('Первое новое').waitFor();
+  for (let waited = 0; waited < 50 && !mock.state.calls.some((call) => call.path === '/rest/v1/rpc/mark_conversation_read'); waited += 1) await page.waitForTimeout(100);
+  const markCalls = mock.state.calls.filter((call) => call.path === '/rest/v1/rpc/mark_conversation_read');
+  assert.equal(markCalls.length, 1);
+  assert.deepEqual(markCalls[0].body, { p_conversation_id: CONVERSATION_ID }, 'only the conversation id, never a user id');
+  await page.getByRole('link', { name: '← Все чаты' }).click();
+  await page.getByRole('link', { name: /Мария/ }).waitFor();
+  assert.equal(await page.getByLabel(/Непрочитанных сообщений/).count(), 0, 'unread badge cleared');
+  await close();
+});
+
+await step('mark-read failure keeps the chat readable and is reported quietly', async () => {
+  const { page, close } = await newContext({ signedIn: true, mockSetup: (state) => {
+    state.conversations = [{ ...unreadConversation }];
+    state.messages = unreadMessages.map((item) => ({ ...item }));
+    state.markReadFails = true;
+  } });
+  await page.goto(`${APP}/chats/${CONVERSATION_ID}`);
+  await page.getByText('Первое новое').waitFor();
+  await page.getByText('Не удалось отметить разговор прочитанным. Сообщения доступны.').waitFor();
+  assert.equal(await page.getByRole('alert').count(), 0, 'no blocking error');
+  assert.equal(await page.getByLabel('Сообщение').count(), 1, 'the chat stays usable');
   await close();
 });
 

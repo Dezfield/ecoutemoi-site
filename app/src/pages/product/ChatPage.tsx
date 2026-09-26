@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useAuth } from '../../auth/AuthProvider';
-import { blockContact, getConversations, getMessages, productError, reportConversation, sendMessage, type ChatMessage, type Conversation } from '../../product/api';
+import { blockContact, getConversations, getMessages, markConversationRead, productError, reportConversation, sendMessage, type ChatMessage, type Conversation } from '../../product/api';
 import { requireSupabase } from '../../lib/supabase';
 
 function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]) {
@@ -36,6 +36,7 @@ export function ChatPage() {
   const [category, setCategory] = useState('spam');
   const [details, setDetails] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
+  const [readNotice, setReadNotice] = useState<string | null>(null);
   const pendingId = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -46,11 +47,22 @@ export function ChatPage() {
     const page = await getMessages(conversationId);
     setMessages((old) => mergeMessages(old, page.messages));
     setHasMore(page.hasMore);
+    // Mark read only after the history is shown, as mobile does. A failure must
+    // not hide the conversation: it only leaves the unread counter as it was.
+    if (Number(found.unread_count) > 0) {
+      try {
+        await markConversationRead(conversationId);
+        setConversation({ ...found, unread_count: 0 });
+        setReadNotice(null);
+      } catch {
+        setReadNotice('Не удалось отметить разговор прочитанным. Сообщения доступны.');
+      }
+    }
   }, [conversationId]);
 
   useEffect(() => {
     let active = true;
-    setLoading(true); setError(null); setMessages([]); setConversation(null);
+    setLoading(true); setError(null); setMessages([]); setConversation(null); setReadNotice(null);
     void refresh().catch((cause) => { if (active) setError(cause instanceof Error && cause.message === 'Доступ к разговору закрыт.' ? cause.message : productError(cause)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -105,6 +117,7 @@ export function ChatPage() {
     <Link to="/chats">← Все чаты</Link>
     {loading ? <p role="status">Открываем разговор…</p> : null}
     {error ? <p role="alert" className="product-error">{error}</p> : null}
+    {readNotice ? <p role="status" className="product-muted">{readNotice}</p> : null}
     {conversation ? <>
       <div className="chat-head"><div><p className="eyebrow">Разговор</p><h1>{conversation.contact_name}</h1></div>
         <div className="button-row"><button type="button" className="button button-secondary button-small" onClick={() => void refresh()}>Обновить</button>

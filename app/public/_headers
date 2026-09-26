@@ -1,12 +1,14 @@
 # Cloudflare Pages response headers for app.ecoutemoi.ru (copied to dist by Vite).
 # No Content-Security-Policy yet: it must first be tested against Supabase Auth,
 # Storage signed URLs and media playback (docs/WEB_APP_DEPLOYMENT.md).
+# /voices/record needs the microphone on this origin only; camera, geolocation and
+# payment stay off.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   X-Robots-Tag: noindex, nofollow
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Permissions-Policy: camera=(), microphone=(self), geolocation=(), payment=()
   Cross-Origin-Opener-Policy: same-origin
   Strict-Transport-Security: max-age=31536000
 

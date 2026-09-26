@@ -13,6 +13,15 @@ export type NavGroup = { title: string | null; items: NavItem[] };
  */
 export const accountNavigation: NavGroup[] = [
   {
+    title: 'Écoute Moi',
+    items: [
+      { kind: 'route', to: '/voices', label: 'Голоса', icon: 'wave' },
+      { kind: 'route', to: '/resonances', label: 'Резонансы', icon: 'star' },
+      { kind: 'route', to: '/chats', label: 'Чаты', icon: 'bell' },
+      { kind: 'route', to: '/account', label: 'Профиль', icon: 'profile' },
+    ],
+  },
+  {
     title: null,
     items: [{ kind: 'route', to: '/account', label: 'Обзор', icon: 'home', end: true }],
   },

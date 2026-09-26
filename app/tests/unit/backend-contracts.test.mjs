@@ -1,26 +1,38 @@
 // Guards the web app against silently depending on backend objects that are
 // not committed in ecoutemoi-mobile main. Every name allowed here must have a
 // VERIFIED row with its source file in docs/WEB_BACKEND_MATRIX.md
-// (checked against ecoutemoi-mobile main 9cb650085e95baca16786588165abf2a44ad1f77).
+// (checked against ecoutemoi-mobile main 3098d8ca711180dffdf4e2da94b6ced98efbb8d1).
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
 const VERIFIED_RPCS = [
+  'block_user',
   'export_my_account_data',
   'get_my_active_sessions',
   'get_my_blocked_users',
   'get_my_dating_profile_v5',
   'get_my_entitlement',
+  'get_my_inbox_v2',
   'get_my_login_methods',
   'get_my_notification_preferences_v1',
+  'get_my_resonances_v6',
   'get_my_safety_center_v1',
+  'get_voice_candidates_v4',
+  'mark_conversation_read',
+  'prepare_my_dating_media',
+  'report_dating_candidate',
+  'report_dating_resonance_content',
+  'respond_to_photo_resonance',
+  'respond_to_voice_candidate_v2',
+  'save_my_dating_profile',
   'submit_moderation_appeal',
+  'submit_user_report',
   'unblock_user',
   'update_my_notification_preferences_v1',
 ];
-const VERIFIED_TABLES = ['dating_profiles', 'privacy_settings', 'profiles'];
+const VERIFIED_TABLES = ['dating_profiles', 'messages', 'privacy_settings', 'profiles'];
 const VERIFIED_BUCKETS = ['dating-audio', 'dating-photos'];
 const VERIFIED_FUNCTIONS = ['delete-my-account'];
 
@@ -46,7 +58,12 @@ test('only verified tables are queried directly', () => {
 });
 
 test('only verified storage buckets are signed', () => {
-  assert.deepEqual(collect(/signedUrl\(\s*['"`]([a-z0-9-]+)['"`]/g), VERIFIED_BUCKETS);
+  assert.deepEqual(collect(/(?:signedUrl|signedMedia)\(\s*['"`]([a-z0-9-]+)['"`]/g), VERIFIED_BUCKETS);
+  for (const bucket of collect(/storage\.from\(\s*['"`]([a-z0-9-]+)['"`]/g)) {
+    assert(VERIFIED_BUCKETS.includes(bucket), `storage bucket ${bucket} must be verified`);
+  }
+  const productApi = sources.find(({ path }) => path.endsWith(join('product', 'api.ts')))?.text ?? '';
+  assert.match(productApi, /bucket: 'dating-audio' \| 'dating-photos'/, 'dynamic bucket names remain a narrow type union');
 });
 
 test('only the protected delete-my-account Edge Function is invoked, with the confirmation phrase only', () => {

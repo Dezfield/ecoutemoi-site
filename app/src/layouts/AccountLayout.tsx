@@ -153,14 +153,14 @@ export function AccountLayout() {
       <a className="skip-link" href="#account-content">Перейти к содержимому</a>
 
       <aside className="sidebar">
-        <Link to="/account" className="sidebar-brand" aria-label="Écoute Moi — личный кабинет">
+        <Link to="/voices" className="sidebar-brand" aria-label="Écoute Moi — Голоса">
           <Wordmark />
         </Link>
         <AccountNav onSignOut={requestSignOut} />
       </aside>
 
       <header className="topbar">
-        <Link to="/account" className="sidebar-brand" aria-label="Écoute Moi — личный кабинет">
+        <Link to="/voices" className="sidebar-brand" aria-label="Écoute Moi — Голоса">
           <Wordmark caption={false} />
         </Link>
         <button
@@ -227,6 +227,13 @@ export function AccountLayout() {
           <Outlet />
         </div>
       </main>
+
+      <nav className="product-bottom-nav" aria-label="Основные разделы">
+        <NavLink to="/voices"><Icon name="wave" /><span>Голоса</span></NavLink>
+        <NavLink to="/resonances"><Icon name="star" /><span>Резонансы</span></NavLink>
+        <NavLink to="/chats"><Icon name="bell" /><span>Чаты</span></NavLink>
+        <NavLink to="/account"><Icon name="profile" /><span>Профиль</span></NavLink>
+      </nav>
 
       <ConfirmDialog
         open={confirmSignOut}

@@ -4,9 +4,9 @@
  * into an open redirect.
  */
 
-export const DEFAULT_AFTER_LOGIN = '/account';
+export const DEFAULT_AFTER_LOGIN = '/voices';
 
-const ALLOWED_PREFIXES = ['/account'];
+const ALLOWED_PREFIXES = ['/account', '/profile', '/voices', '/resonances', '/chats'];
 
 /**
  * Returns a safe internal path or the default. Rejects absolute URLs,

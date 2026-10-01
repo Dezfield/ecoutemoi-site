@@ -5,7 +5,7 @@ export function SupportPage() {
   return (
     <>
       <PageHeader eyebrow="Безопасность" title="Поддержка">
-        <p>Поддержка доступна через приложение Écoute Moi.</p>
+        <p>Напишите на <a href={`mailto:${config.supportEmail}`}>{config.supportEmail}</a> или обратитесь через приложение Écoute Moi.</p>
       </PageHeader>
       <section className="panel" aria-labelledby="in-app-title">
         <h2 id="in-app-title" className="panel-title">Обращение в поддержку</h2>
@@ -23,9 +23,10 @@ export function SupportPage() {
       </section>
       <section className="panel panel-muted" aria-labelledby="more-title">
         <h2 id="more-title" className="panel-title">Если нет доступа к аккаунту</h2>
-        <p className="panel-text">Актуальная информация о каналах связи публикуется на странице поддержки.</p>
+        <p className="panel-text">Если вход недоступен, напишите на <a href={`mailto:${config.supportEmail}`}>{config.supportEmail}</a>. Укажите адрес, с которым входили в аккаунт, но не отправляйте пароль или код входа.</p>
         <div className="button-row">
           <a className="button button-secondary" href={config.links.support}>Страница поддержки</a>
+          <a className="button button-secondary" href={`mailto:${config.supportEmail}`}>Написать на почту</a>
           <a className="button button-ghost" href={config.links.community}>Правила сообщества</a>
         </div>
       </section>

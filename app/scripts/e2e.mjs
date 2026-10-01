@@ -65,6 +65,7 @@ const VERIFIED_RPCS = new Set([
   'get_my_inbox_v2',
   'get_my_resonances_v6',
   'get_voice_candidates_v4',
+  'get_my_audio_letters_v1',
   'mark_conversation_read',
   'prepare_my_dating_media',
   'respond_to_photo_resonance',
@@ -188,6 +189,7 @@ function createMock() {
       { user_id: '22222222-2222-4222-8222-222222222222', display_name: 'Мария', blocked_at: '2026-09-11T12:00:00Z' },
     ],
     voices: [],
+    audioLettersEnabled: false,
     // Optional per-call answers of get_voice_candidates_v4 (then falls back to voices).
     voiceResponses: null,
     markReadFails: false,
@@ -305,6 +307,8 @@ function createMock() {
           }] : [], cors);
         case 'get_my_entitlement':
           return json(route, 200, [state.entitlement], cors);
+        case 'get_my_audio_letters_v1':
+          return json(route, 200, { enabled: state.audioLettersEnabled, limits: {}, letters: [] }, cors);
         case 'get_voice_candidates_v4':
           if (state.voiceResponses?.length) return json(route, 200, state.voiceResponses.shift(), cors);
           return json(route, 200, state.voices, cors);
@@ -1062,6 +1066,19 @@ await step('voices first load: an empty first answer is asked once more and the 
   await page.getByRole('heading', { name: 'Что вас вдохновляет?' }).waitFor();
   assert.equal(await page.getByText('Пока нет новых Голосов').count(), 0, 'no false empty state');
   assert.equal(voiceCalls(mock), 2);
+  await close();
+});
+
+await step('audio-letter cohort: legacy discovery is replaced by an honest pointer, chats stay', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.audioLettersEnabled = true; state.voices = [VOICE]; } });
+  await page.goto(`${APP}/voices`);
+  await page.getByText('Знакомства теперь начинаются с аудиописьма').waitFor();
+  assert.equal(voiceCalls(mock), 0, 'no legacy impressions are created');
+  await page.goto(`${APP}/resonances`);
+  await page.getByText('Знакомства теперь начинаются с аудиописьма').waitFor();
+  assert(!mock.state.calls.some((call) => call.path === '/rest/v1/rpc/get_my_resonances_v6'), 'no legacy resonances');
+  await page.getByRole('link', { name: '«Чаты»' }).click();
+  await page.waitForURL(`${APP}/chats`);
   await close();
 });
 

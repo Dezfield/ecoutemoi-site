@@ -11,6 +11,7 @@ const VERIFIED_RPCS = [
   'block_user',
   'export_my_account_data',
   'get_my_active_sessions',
+  'get_my_audio_letters_v1',
   'get_my_blocked_users',
   'get_my_dating_profile_v5',
   'get_my_entitlement',

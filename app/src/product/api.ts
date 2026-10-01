@@ -104,6 +104,21 @@ export async function saveOwnVoice(blob: Blob, duration: number) {
   if (saved.error) throw saved.error;
 }
 
+/**
+ * Whether this account already uses the audio-letter flow (server cohort of the
+ * release flag audio_letters_v1, independent of platform). Before the backend
+ * has the RPC, the answer is "no" and the existing web flow stays as it is.
+ */
+export async function getAudioLettersEnabled(): Promise<boolean> {
+  const { data, error } = await requireSupabase().rpc('get_my_audio_letters_v1');
+  if (error) {
+    const code = String((error as { code?: unknown }).code ?? '');
+    if (code === 'PGRST202' || code === '42883') return false;
+    throw error;
+  }
+  return Boolean(data && typeof data === 'object' && (data as { enabled?: unknown }).enabled === true);
+}
+
 // get_voice_candidates_v4 records new impressions that its own outer query
 // cannot see yet: the first call of a day can return [] and the next call
 // returns them. Ask exactly once more before showing an empty state; never poll.

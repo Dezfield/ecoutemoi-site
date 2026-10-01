@@ -6,7 +6,7 @@ const documents = [
   { href: config.links.privacy, title: 'Политика конфиденциальности' },
   { href: config.links.terms, title: 'Пользовательское соглашение' },
   { href: config.links.community, title: 'Правила сообщества' },
-  { href: config.links.accountDeletion, title: 'Удаление аккаунта' },
+  { href: config.links.accountDeletion, title: 'Удаление аккаунта и данных' },
   { href: config.links.support, title: 'Поддержка' },
 ];
 

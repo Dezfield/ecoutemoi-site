@@ -57,6 +57,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           <a href={config.links.terms}>Пользовательское соглашение</a>
           <a href={config.links.privacy}>Конфиденциальность</a>
           <a href={config.links.support}>Поддержка</a>
+          <a href={`mailto:${config.supportEmail}`}>{config.supportEmail}</a>
         </footer>
       </main>
     </div>

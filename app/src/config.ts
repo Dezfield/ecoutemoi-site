@@ -32,6 +32,7 @@ export const config = {
   signupEnabled,
   oauthProviders: enabledOAuthProviders(parseOAuthProviders(env.VITE_AUTH_OAUTH_PROVIDERS), signupEnabled),
   publicSiteUrl,
+  supportEmail: 'support@ecoutemoi.ru',
   links: {
     home: `${publicSiteUrl}/`,
     howItWorks: `${publicSiteUrl}/#how`,

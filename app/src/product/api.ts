@@ -67,7 +67,22 @@ type OwnDatingProfile = {
   discovery_enabled: boolean; onboarding_complete: boolean;
 };
 
-export async function saveOwnVoice(blob: Blob, duration: number) {
+export type VoiceReviewState = 'pending' | 'approved' | 'rejected';
+
+const isMissingRpc = (error: unknown) => {
+  const code = String((error as { code?: unknown } | null)?.code ?? '');
+  return code === 'PGRST202' || code === '42883';
+};
+
+/**
+ * A recording other people may have heard is never replaced in place: a signed
+ * URL names a path, so new bytes behind an old path would reach whoever holds an
+ * earlier URL. With the audio-letters backend the server issues a new path for
+ * each recording, the profile switches to it and the new version waits for a
+ * moderator (reviewState). Before that backend exists, the reserved path is
+ * used as before (reviewState null).
+ */
+export async function saveOwnVoice(blob: Blob, duration: number): Promise<{ reviewState: VoiceReviewState | null }> {
   if (duration < 20 || duration > 45 || blob.size > 3 * 1024 * 1024 || !['audio/webm', 'audio/mp4'].includes(blob.type)) {
     throw new Error('Запись должна длиться 20–45 секунд и быть меньше 3 МБ.');
   }
@@ -78,6 +93,26 @@ export async function saveOwnVoice(blob: Blob, duration: number) {
   if (!profile?.onboarding_complete || !profile.birth_date || !profile.city || !profile.gender_code || !profile.relationship_goal || !profile.audio_prompt_key || !profile.photo_paths?.length) {
     throw new Error('Сначала завершите анкету в мобильном приложении.');
   }
+  const issued = await client.rpc('prepare_profile_voice_upload_v1');
+  if (!issued.error) {
+    const newPath = String(issued.data);
+    const stored = await client.storage.from('dating-audio').upload(newPath, blob, { contentType: blob.type, upsert: false });
+    if (stored.error) throw stored.error;
+    const switched = await client.rpc('set_my_profile_voice_v1', {
+      p_storage_path: newPath,
+      p_duration_seconds: duration,
+      p_prompt_key: profile.audio_prompt_key,
+    });
+    if (switched.error) {
+      // An unreferenced upload of one's own may be removed; ignore a failure here.
+      await client.storage.from('dating-audio').remove([newPath]).catch(() => undefined);
+      throw switched.error;
+    }
+    const state = (switched.data as { review_state?: unknown } | null)?.review_state;
+    return { reviewState: state === 'approved' || state === 'rejected' ? state : 'pending' };
+  }
+  if (!isMissingRpc(issued.error)) throw issued.error;
+
   const prepared = await client.rpc('prepare_my_dating_media');
   if (prepared.error) throw prepared.error;
   const path = (prepared.data as { audio_path: string }[] | null)?.[0]?.audio_path;
@@ -102,6 +137,7 @@ export async function saveOwnVoice(blob: Blob, duration: number) {
     p_discovery_enabled: profile.discovery_enabled,
   });
   if (saved.error) throw saved.error;
+  return { reviewState: null };
 }
 
 /**

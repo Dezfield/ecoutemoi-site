@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { PageHeader } from '../../components/PageHeader';
-import { saveOwnVoice } from '../../product/api';
+import { saveOwnVoice, type VoiceReviewState } from '../../product/api';
 
 export function RecordVoicePage() {
   const recorder = useRef<MediaRecorder | null>(null);
@@ -15,7 +15,7 @@ export function RecordVoicePage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<VoiceReviewState | 'saved' | null>(null);
 
   useEffect(() => {
     if (!blob) { setPreviewUrl(null); return; }
@@ -32,7 +32,7 @@ export function RecordVoicePage() {
 
   async function start() {
     if (busy || recording) return;
-    setError(null); setSaved(false); setBlob(null); setElapsed(0);
+    setError(null); setSaved(null); setBlob(null); setElapsed(0);
     const mime = ['audio/webm;codecs=opus', 'audio/mp4'].find((type) => window.MediaRecorder?.isTypeSupported(type));
     if (!navigator.mediaDevices?.getUserMedia || !mime) {
       setError('Этот браузер не поддерживает запись WebM или MP4. Прослушивание, Резонансы и Чаты остаются доступны.');
@@ -74,13 +74,13 @@ export function RecordVoicePage() {
   async function save() {
     if (!blob || busy) return;
     setBusy(true); setError(null);
-    try { await saveOwnVoice(blob, elapsed); setSaved(true); }
+    try { const result = await saveOwnVoice(blob, elapsed); setSaved(result.reviewState ?? 'saved'); }
     catch (cause) { setError(cause instanceof Error && cause.message.startsWith('Сначала завершите') ? cause.message : 'Не удалось сохранить аудиописьмо. Проверьте соединение и попробуйте ещё раз.'); }
     finally { setBusy(false); }
   }
 
   return <section className="product-page">
-    <PageHeader eyebrow="Ваш голос" title="Аудиописьмо">Запишите 20–45 секунд. Оно станет доступно людям, подходящим по вашим настройкам знакомства.</PageHeader>
+    <PageHeader eyebrow="Ваш голос" title="Аудиописьмо">Запишите 20–45 секунд. После проверки модератором запись станет доступна людям, подходящим по вашим настройкам знакомства.</PageHeader>
     <div className="product-card voice-card">
       <p>Вопрос и остальные поля анкеты сохраняются из вашего мобильного профиля.</p>
       <p role="status">{recording ? `Идёт запись: ${elapsed} / 45 сек.` : blob ? `Записано: ${elapsed} сек.` : 'Микрофон выключен'}</p>
@@ -88,10 +88,12 @@ export function RecordVoicePage() {
         {!recording ? <button type="button" className="button button-primary" onClick={() => void start()} disabled={busy}>{blob ? 'Перезаписать' : 'Начать запись'}</button> : <button type="button" className="button button-secondary" onClick={stop}>Остановить</button>}
       </div>
       {previewUrl ? <audio controls src={previewUrl} aria-label="Прослушать своё аудиописьмо" /> : null}
-      {blob ? <button type="button" className="button button-primary" onClick={() => void save()} disabled={busy || elapsed < 20 || elapsed > 45 || blob.size > 3 * 1024 * 1024}>{busy ? 'Сохраняем…' : 'Опубликовать аудиописьмо'}</button> : null}
+      {blob ? <button type="button" className="button button-primary" onClick={() => void save()} disabled={busy || elapsed < 20 || elapsed > 45 || blob.size > 3 * 1024 * 1024}>{busy ? 'Отправляем…' : 'Отправить аудиописьмо'}</button> : null}
       {blob && (elapsed < 20 || elapsed > 45) ? <p>Нужна запись длительностью 20–45 секунд.</p> : null}
       {error ? <p role="alert" className="product-error">{error}</p> : null}
-      {saved ? <p role="status">Аудиописьмо сохранено.</p> : null}
+      {saved === 'pending' ? <p role="status">Запись отправлена на проверку. Новые собеседники услышат её после проверки модератором; прежняя запись, которую уже получили, не меняется.</p> : null}
+      {saved === 'rejected' ? <p role="status">Запись сохранена, но не прошла проверку: в подборе её не будет.</p> : null}
+      {saved === 'approved' || saved === 'saved' ? <p role="status">Аудиописьмо сохранено.</p> : null}
     </div>
     <Link to="/voices">← Вернуться к Голосам</Link>
   </section>;

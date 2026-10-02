@@ -8,15 +8,15 @@ export type NavItem =
 export type NavGroup = { title: string | null; items: NavItem[] };
 
 /**
- * Account navigation. Future product areas (Голоса, Отклики, Резонансы,
- * Чаты) are added here as new groups/routes without changing the shell.
+ * Account navigation. Future product areas (Голоса, Отклики, Чаты) are added
+ * here as new groups/routes without changing the shell.
  */
 export const accountNavigation: NavGroup[] = [
   {
     title: 'Écoute Moi',
     items: [
       { kind: 'route', to: '/voices', label: 'Голоса', icon: 'wave' },
-      { kind: 'route', to: '/resonances', label: 'Резонансы', icon: 'star' },
+      { kind: 'route', to: '/responses', label: 'Отклики', icon: 'star' },
       { kind: 'route', to: '/chats', label: 'Чаты', icon: 'bell' },
       { kind: 'route', to: '/account', label: 'Профиль', icon: 'profile' },
     ],

@@ -6,7 +6,7 @@
 
 export const DEFAULT_AFTER_LOGIN = '/voices';
 
-const ALLOWED_PREFIXES = ['/account', '/profile', '/voices', '/resonances', '/chats'];
+const ALLOWED_PREFIXES = ['/account', '/profile', '/voices', '/responses', '/resonances', '/chats'];
 
 /**
  * Returns a safe internal path or the default. Rejects absolute URLs,

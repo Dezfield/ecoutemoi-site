@@ -6,7 +6,7 @@ import { getAudioLettersEnabled } from '../../product/api';
 
 /**
  * Accounts moved to audio letters must not keep using the previous
- * like/«Резонанс» discovery on the web: the app and the web would then follow
+ * like/mutual-response discovery on the web: the app and the web would then follow
  * different rules. Until the web has the new flow, those accounts see an honest
  * pointer to the iPhone app; chats opened after mutual disclosure stay here.
  */

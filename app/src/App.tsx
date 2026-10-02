@@ -54,7 +54,9 @@ export function App() {
       >
         <Route path="voices" element={<AudioLettersGate title="Голоса"><VoicesPage /></AudioLettersGate>} />
         <Route path="voices/record" element={<AudioLettersGate title="Голоса"><RecordVoicePage /></AudioLettersGate>} />
-        <Route path="resonances" element={<AudioLettersGate title="Отклики"><ResonancesPage /></AudioLettersGate>} />
+        <Route path="responses" element={<AudioLettersGate title="Отклики"><ResonancesPage /></AudioLettersGate>} />
+        {/* Earlier links and bookmarks keep working. */}
+        <Route path="resonances" element={<Navigate to="/responses" replace />} />
         <Route path="chats" element={<ChatsPage />} />
         <Route path="chats/:conversationId" element={<ChatPage />} />
         <Route path="profile" element={<Navigate to="/account" replace />} />

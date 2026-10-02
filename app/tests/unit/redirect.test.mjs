@@ -7,6 +7,8 @@ test('accepts internal product and account paths', () => {
   assert.equal(safeInternalPath('/account'), '/account');
   assert.equal(safeInternalPath('/account/security?tab=1#x'), '/account/security?tab=1#x');
   assert.equal(safeInternalPath('/voices'), '/voices');
+  assert.equal(safeInternalPath('/responses'), '/responses');
+  assert.equal(safeInternalPath('/resonances'), '/resonances', 'old bookmarks still resolve (the route redirects)');
   assert.equal(safeInternalPath('/chats/00000000-0000-0000-0000-000000000001'), '/chats/00000000-0000-0000-0000-000000000001');
 });
 

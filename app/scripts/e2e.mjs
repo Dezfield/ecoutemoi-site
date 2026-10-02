@@ -101,7 +101,7 @@ const GUARDED_RPCS = new Set([
 ]);
 const VERIFIED_TABLES = new Set(['profiles', 'dating_profiles', 'messages', 'privacy_settings']);
 const VERIFIED_BUCKETS = new Set(['dating-photos', 'dating-audio']);
-const VERIFIED_FUNCTIONS = new Set(['delete-my-account']);
+const VERIFIED_FUNCTIONS = new Set(['delete-my-account', 'voice-media-link']);
 const SANCTION_ID = '33333333-3333-4333-8333-333333333333';
 const CONTACT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const CONVERSATION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -193,6 +193,9 @@ function createMock() {
     ],
     voices: [],
     audioLettersEnabled: false,
+    // true: a backend without the voice-media-link function (direct signing).
+    voiceLinkFunctionMissing: false,
+    voiceLinkRequests: [],
     // true: a backend before the audio-letters release (no profile voice RPCs).
     profileVoiceRpcMissing: false,
     profileVoiceUploaded: false,
@@ -432,6 +435,13 @@ function createMock() {
       const bearer = request.headers().authorization ?? '';
       if (!bearer.startsWith('Bearer ') || bearer.includes('e2e-publishable-key')) {
         return json(route, 401, { error: 'authentication_required' }, cors);
+      }
+      if (name === 'voice-media-link') {
+        // mobile supabase/functions/voice-media-link/index.ts: { paths } in, 300 s links out.
+        if (state.voiceLinkFunctionMissing) return json(route, 404, { code: 'NOT_FOUND', message: 'Requested function was not found' }, cors);
+        if (!body || !Array.isArray(body.paths) || Object.keys(body).join() !== 'paths') return json(route, 400, { ok: false, error: 'invalid_request' }, cors);
+        state.voiceLinkRequests.push(body.paths);
+        return json(route, 200, { ok: true, expiresIn: 300, items: body.paths.map((item) => ({ path: item, url: `${SUPABASE_URL}/storage/v1/object/sign/dating-audio/${item}?token=e2e` })), denied: [] }, cors);
       }
       if (JSON.stringify(body) !== JSON.stringify({ confirmation: 'delete-my-account' })) {
         state.unverified.push(`delete-my-account with unexpected body ${JSON.stringify(body)}`);
@@ -1086,6 +1096,25 @@ await step('voices first load: an empty first answer is asked once more and the 
   assert.equal(await page.getByText('Пока нет новых Голосов').count(), 0, 'no false empty state');
   assert.equal(voiceCalls(mock), 2);
   await close();
+});
+
+await step('voice audio links come from voice-media-link; direct signing only without the function', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.voices = [VOICE]; } });
+  await page.goto(`${APP}/voices`);
+  await page.getByRole('heading', { name: 'Что вас вдохновляет?' }).waitFor();
+  await page.waitForFunction(() => [...document.querySelectorAll('audio')].some((audio) => audio.src.includes('token=e2e')));
+  assert.deepEqual(mock.state.voiceLinkRequests, [[VOICE.audio_path]], 'the audio link is requested from the server');
+  assert(!mock.state.calls.some((call) => String(call.path).startsWith('/storage/v1/object/sign/dating-audio/')), 'no client-signed audio URL');
+  await close();
+
+  const legacy = await newContext({ signedIn: true, mockSetup: (state) => { state.voices = [VOICE]; state.voiceLinkFunctionMissing = true; } });
+  await legacy.page.goto(`${APP}/voices`);
+  await legacy.page.getByRole('heading', { name: 'Что вас вдохновляет?' }).waitFor();
+  await legacy.page.waitForFunction(() => [...document.querySelectorAll('audio')].some((audio) => audio.src.includes('token=e2e')));
+  const direct = legacy.mock.state.calls.find((call) => String(call.path).startsWith('/storage/v1/object/sign/dating-audio/'));
+  assert(direct, 'without the function the web falls back to a direct signature');
+  assert.equal(direct.body.expiresIn, 300, 'the fallback uses the same 300 s lifetime');
+  await legacy.close();
 });
 
 await step('audio-letter cohort: legacy discovery is replaced by an honest pointer, chats stay', async () => {

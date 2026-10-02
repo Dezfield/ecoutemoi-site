@@ -1,4 +1,5 @@
 import { requireSupabase } from '../lib/supabase';
+import { voiceMediaLink } from './voiceLinks';
 
 export type Voice = {
   impression_id: string;
@@ -54,6 +55,8 @@ export type ChatMessage = {
 };
 
 export async function signedMedia(bucket: 'dating-audio' | 'dating-photos', path: string): Promise<string> {
+  // Audio: a server-issued short link; photos keep the existing signed URL.
+  if (bucket === 'dating-audio') return voiceMediaLink(path);
   const { data, error } = await requireSupabase().storage.from(bucket).createSignedUrl(path, 600);
   if (error) throw error;
   return data.signedUrl;

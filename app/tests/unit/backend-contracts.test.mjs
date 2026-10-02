@@ -37,7 +37,7 @@ const VERIFIED_RPCS = [
 ];
 const VERIFIED_TABLES = ['dating_profiles', 'messages', 'privacy_settings', 'profiles'];
 const VERIFIED_BUCKETS = ['dating-audio', 'dating-photos'];
-const VERIFIED_FUNCTIONS = ['delete-my-account'];
+const VERIFIED_FUNCTIONS = ['delete-my-account', 'voice-media-link'];
 
 const sources = [];
 const walk = (dir) => {
@@ -69,7 +69,7 @@ test('only verified storage buckets are signed', () => {
   assert.match(productApi, /bucket: 'dating-audio' \| 'dating-photos'/, 'dynamic bucket names remain a narrow type union');
 });
 
-test('only the protected delete-my-account Edge Function is invoked, with the confirmation phrase only', () => {
+test('only verified Edge Functions are invoked; delete-my-account with the confirmation phrase only', () => {
   assert.deepEqual(collect(/functions\s*\.\s*invoke\(\s*['"`]([a-z0-9-]+)['"`]/g), VERIFIED_FUNCTIONS);
   for (const { path, text } of sources) {
     assert.doesNotMatch(text, /\/functions\/v1\//, `${path}: no hand-built Edge Function URL`);

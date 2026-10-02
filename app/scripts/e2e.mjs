@@ -65,8 +65,11 @@ const VERIFIED_RPCS = new Set([
   'get_my_inbox_v2',
   'get_my_resonances_v6',
   'get_voice_candidates_v4',
+  'get_my_audio_letters_v1',
   'mark_conversation_read',
   'prepare_my_dating_media',
+  'prepare_profile_voice_upload_v1',
+  'set_my_profile_voice_v1',
   'respond_to_photo_resonance',
   'respond_to_voice_candidate_v2',
   'save_my_dating_profile',
@@ -105,6 +108,7 @@ const CONVERSATION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const FOREIGN_CONVERSATION_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const IMPRESSION_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const RESONANCE_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const PROFILE_VOICE_PATH = 'letters/99999999-9999-4999-8999-999999999999';
 
 const identity = (provider) => ({
   id: `${provider}-identity`,
@@ -188,6 +192,10 @@ function createMock() {
       { user_id: '22222222-2222-4222-8222-222222222222', display_name: 'Мария', blocked_at: '2026-09-11T12:00:00Z' },
     ],
     voices: [],
+    audioLettersEnabled: false,
+    // true: a backend before the audio-letters release (no profile voice RPCs).
+    profileVoiceRpcMissing: false,
+    profileVoiceUploaded: false,
     // Optional per-call answers of get_voice_candidates_v4 (then falls back to voices).
     voiceResponses: null,
     markReadFails: false,
@@ -305,6 +313,8 @@ function createMock() {
           }] : [], cors);
         case 'get_my_entitlement':
           return json(route, 200, [state.entitlement], cors);
+        case 'get_my_audio_letters_v1':
+          return json(route, 200, { enabled: state.audioLettersEnabled, limits: {}, letters: [] }, cors);
         case 'get_voice_candidates_v4':
           if (state.voiceResponses?.length) return json(route, 200, state.voiceResponses.shift(), cors);
           return json(route, 200, state.voices, cors);
@@ -316,6 +326,13 @@ function createMock() {
           return route.fulfill({ status: 204, headers: cors });
         case 'prepare_my_dating_media':
           return json(route, 200, [{ audio_path: `letters/${USER_ID}` }], cors);
+        case 'prepare_profile_voice_upload_v1':
+          if (state.profileVoiceRpcMissing) return json(route, 404, { code: 'PGRST202', message: 'Could not find the function' }, cors);
+          return json(route, 200, PROFILE_VOICE_PATH, cors);
+        case 'set_my_profile_voice_v1':
+          if (body.p_storage_path !== PROFILE_VOICE_PATH || !state.profileVoiceUploaded || body.p_audio_duration_seconds !== undefined
+            || body.p_duration_seconds < 15 || body.p_duration_seconds > 45 || body.p_prompt_key !== 'good_day') return json(route, 400, { code: '22023' }, cors);
+          return json(route, 200, { audio_path: PROFILE_VOICE_PATH, review_state: 'pending' }, cors);
         case 'save_my_dating_profile':
           if (body.p_audio_path !== `letters/${USER_ID}` || body.p_audio_duration_seconds < 20 || body.p_audio_duration_seconds > 45 || !state.audioUploaded) return json(route, 400, { code: '22023' }, cors);
           return route.fulfill({ status: 204, headers: cors });
@@ -400,6 +417,12 @@ function createMock() {
     if (path === `/storage/v1/object/dating-audio/letters/${USER_ID}` && method === 'POST') {
       state.audioUploaded = true;
       return json(route, 200, { Key: `dating-audio/letters/${USER_ID}` }, cors);
+    }
+    if (path === `/storage/v1/object/dating-audio/${PROFILE_VOICE_PATH}` && method === 'POST') {
+      // A new recording never overwrites: the client must not ask for upsert.
+      if ((request.headers()['x-upsert'] ?? 'false') !== 'false') return json(route, 400, { error: 'upsert_not_allowed' }, cors);
+      state.profileVoiceUploaded = true;
+      return json(route, 200, { Key: `dating-audio/${PROFILE_VOICE_PATH}` }, cors);
     }
 
     // ---- Edge Function delete-my-account (mobile main supabase/functions/delete-my-account/index.ts)
@@ -1065,6 +1088,19 @@ await step('voices first load: an empty first answer is asked once more and the 
   await close();
 });
 
+await step('audio-letter cohort: legacy discovery is replaced by an honest pointer, chats stay', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.audioLettersEnabled = true; state.voices = [VOICE]; } });
+  await page.goto(`${APP}/voices`);
+  await page.getByText('Знакомства теперь начинаются с аудиописьма').waitFor();
+  assert.equal(voiceCalls(mock), 0, 'no legacy impressions are created');
+  await page.goto(`${APP}/resonances`);
+  await page.getByText('Знакомства теперь начинаются с аудиописьма').waitFor();
+  assert(!mock.state.calls.some((call) => call.path === '/rest/v1/rpc/get_my_resonances_v6'), 'no legacy resonances');
+  await page.getByRole('link', { name: '«Чаты»' }).click();
+  await page.waitForURL(`${APP}/chats`);
+  await close();
+});
+
 await step('voices real empty: two empty answers show the empty state and stop', async () => {
   const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.voiceResponses = [[], []]; } });
   await page.goto(`${APP}/voices`);
@@ -1168,7 +1204,7 @@ await step('chat retry uses one client id; pagination, ordering, block and close
   await close();
 });
 
-await step('own voice recording reuses the existing profile and private audio bucket', async () => {
+await step('own voice recording goes to a new server-issued path and waits for review', async () => {
   const { page, mock, close } = await newContext({ signedIn: true });
   await page.addInitScript(() => {
     const originalNow = Date.now;
@@ -1185,7 +1221,35 @@ await step('own voice recording reuses the existing profile and private audio bu
   await page.getByRole('button', { name: 'Начать запись' }).click();
   await page.evaluate(() => { window.__e2eTimeOffset = 21000; });
   await page.getByRole('button', { name: 'Остановить' }).click();
-  await page.getByRole('button', { name: 'Опубликовать аудиописьмо' }).click();
+  await page.getByRole('button', { name: 'Отправить аудиописьмо' }).click();
+  await page.getByText('Запись отправлена на проверку.', { exact: false }).waitFor();
+  const switched = mock.state.calls.find((call) => call.path === '/rest/v1/rpc/set_my_profile_voice_v1');
+  assert(switched);
+  assert.deepEqual(switched.body, { p_storage_path: PROFILE_VOICE_PATH, p_duration_seconds: 21, p_prompt_key: 'good_day' });
+  assert(mock.state.profileVoiceUploaded, 'the new recording is uploaded once, without upsert');
+  assert(!mock.state.audioUploaded, 'the reserved (sealed) path is not written');
+  assert(!mock.state.calls.some((call) => call.path === '/rest/v1/rpc/save_my_dating_profile'), 'the profile is switched by the server');
+  await close();
+});
+
+await step('own voice recording on a backend before the release keeps the reserved path', async () => {
+  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.profileVoiceRpcMissing = true; } });
+  await page.addInitScript(() => {
+    const originalNow = Date.now;
+    Date.now = () => originalNow() + (window.__e2eTimeOffset ?? 0);
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) } });
+    window.MediaRecorder = class {
+      static isTypeSupported(type) { return type === 'audio/webm;codecs=opus'; }
+      state = 'inactive';
+      start() { this.state = 'recording'; }
+      stop() { this.state = 'inactive'; this.ondataavailable?.({ data: new Blob(['voice-fixture'], { type: 'audio/webm' }) }); this.onstop?.(); }
+    };
+  });
+  await page.goto(`${APP}/voices/record`);
+  await page.getByRole('button', { name: 'Начать запись' }).click();
+  await page.evaluate(() => { window.__e2eTimeOffset = 21000; });
+  await page.getByRole('button', { name: 'Остановить' }).click();
+  await page.getByRole('button', { name: 'Отправить аудиописьмо' }).click();
   await page.getByText('Аудиописьмо сохранено.').waitFor();
   const saved = mock.state.calls.find((call) => call.path === '/rest/v1/rpc/save_my_dating_profile');
   assert(saved);

@@ -20,6 +20,7 @@ import { AuthCallbackPage } from './pages/auth/AuthCallbackPage';
 import { VoicesPage } from './pages/product/VoicesPage';
 import { RecordVoicePage } from './pages/product/RecordVoicePage';
 import { ResonancesPage } from './pages/product/ResonancesPage';
+import { AudioLettersGate } from './pages/product/AudioLettersGate';
 import { ChatsPage } from './pages/product/ChatsPage';
 import { ChatPage } from './pages/product/ChatPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
@@ -51,9 +52,9 @@ export function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="voices" element={<VoicesPage />} />
-        <Route path="voices/record" element={<RecordVoicePage />} />
-        <Route path="resonances" element={<ResonancesPage />} />
+        <Route path="voices" element={<AudioLettersGate title="Голоса"><VoicesPage /></AudioLettersGate>} />
+        <Route path="voices/record" element={<AudioLettersGate title="Голоса"><RecordVoicePage /></AudioLettersGate>} />
+        <Route path="resonances" element={<AudioLettersGate title="Отклики"><ResonancesPage /></AudioLettersGate>} />
         <Route path="chats" element={<ChatsPage />} />
         <Route path="chats/:conversationId" element={<ChatPage />} />
         <Route path="profile" element={<Navigate to="/account" replace />} />

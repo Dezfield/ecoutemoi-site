@@ -1,5 +1,6 @@
 import type { LoginMethod, LoginProvider } from '../auth/types';
 import { requireSupabase } from '../lib/supabase';
+import { voiceMediaLink } from '../product/voiceLinks';
 import type {
   AccountSession,
   AccountSummary,
@@ -61,6 +62,7 @@ export function accountErrorMessage(error: unknown): string {
 }
 
 async function signedUrl(bucket: string, path: string, expiresIn = 15 * 60): Promise<string | null> {
+  if (bucket === 'dating-audio') return voiceMediaLink(path).catch(() => null);
   const { data, error } = await requireSupabase().storage.from(bucket).createSignedUrl(path, expiresIn);
   if (error) return null; // a missing photo must not break the whole account page
   return data.signedUrl;

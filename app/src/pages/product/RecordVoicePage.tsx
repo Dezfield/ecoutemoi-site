@@ -35,7 +35,7 @@ export function RecordVoicePage() {
     setError(null); setSaved(null); setBlob(null); setElapsed(0);
     const mime = ['audio/webm;codecs=opus', 'audio/mp4'].find((type) => window.MediaRecorder?.isTypeSupported(type));
     if (!navigator.mediaDevices?.getUserMedia || !mime) {
-      setError('Этот браузер не поддерживает запись WebM или MP4. Прослушивание, Резонансы и Чаты остаются доступны.');
+      setError('Этот браузер не поддерживает запись WebM или MP4. Прослушивание, отклики и чаты остаются доступны.');
       return;
     }
     try {

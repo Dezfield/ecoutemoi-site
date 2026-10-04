@@ -101,7 +101,7 @@ function PreferencesForm({ initial }: { initial: NotificationPreferences }) {
           onChange={(value) => patch({ messagesEnabled: value })}
         />
         <Toggle
-          label="Резонанс и Взаимность"
+          label="Взаимный отклик и Взаимность"
           description="Изменения в знакомствах и открытие разговора."
           checked={draft.datingEnabled}
           disabled={saving}

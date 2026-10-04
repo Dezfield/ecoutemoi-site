@@ -29,7 +29,7 @@ function ResonanceCard({ resonance, refresh }: { resonance: Resonance; refresh: 
     finally { setBusy(false); }
   }
   return <article className="product-card">
-    <p className="eyebrow">{resonance.stage === 'mutuality' ? 'Взаимность' : 'Резонанс'}</p>
+    <p className="eyebrow">{resonance.stage === 'mutuality' ? 'Взаимность' : 'Взаимный отклик'}</p>
     <h2>{resonance.display_name}</h2>
     <p className="product-muted">{resonance.age} лет · {resonance.city} · {resonance.relationship_goal}</p>
     {resonance.about ? <p>{resonance.about}</p> : null}
@@ -58,11 +58,11 @@ export function ResonancesPage() {
   }
   useEffect(() => { void load(); }, []);
   return <section className="product-page">
-    <PageHeader eyebrow="Взаимный интерес" title="Резонансы">Здесь открываются анкеты людей, с которыми вы откликнулись друг другу.</PageHeader>
+    <PageHeader eyebrow="Взаимный интерес" title="Взаимные отклики">Когда отклик взаимный, здесь открываются анкеты и фотографии.</PageHeader>
     <div className="button-row"><button type="button" className="button button-secondary button-small" onClick={() => void load()}>Обновить</button></div>
-    {loading ? <p role="status">Загружаем Резонансы…</p> : null}
+    {loading ? <p role="status">Загружаем отклики…</p> : null}
     {error ? <p role="alert" className="product-error">{error}</p> : null}
-    {!loading && !error && !items.length ? <p className="product-empty">Резонансов пока нет</p> : null}
+    {!loading && !error && !items.length ? <p className="product-empty">Взаимных откликов пока нет</p> : null}
     <div className="product-grid">{items.map((item) => <ResonanceCard key={item.resonance_id} resonance={item} refresh={() => void load()} />)}</div>
   </section>;
 }

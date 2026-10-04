@@ -31,7 +31,7 @@ function VoiceCard({ voice, onDecided }: { voice: Voice; onDecided: (id: string)
     setBusy(true); setError(null);
     try {
       const response = await respondToVoice(voice.impression_id, interested, interested ? reason : null);
-      setResult(response.result_status === 'resonance' ? 'Резонанс возник!' : interested ? 'Отклик отправлен' : 'Голос пропущен');
+      setResult(response.result_status === 'resonance' ? 'Отклик взаимный — фотографии открыты' : interested ? 'Отклик отправлен' : 'Голос пропущен');
       onDecided(voice.impression_id);
     } catch (cause) { setError(productError(cause)); }
     finally { setBusy(false); }
@@ -67,7 +67,7 @@ function VoiceCard({ voice, onDecided }: { voice: Voice; onDecided: (id: string)
       <button className="button button-danger-outline" type="submit" disabled={busy}>Отправить жалобу и заблокировать</button>
     </form> : null}
     {error ? <p role="alert" className="product-error">{error}</p> : null}
-    {result ? <p role="status">{result} <Link to="/resonances">Открыть Резонансы</Link></p> : null}
+    {result ? <p role="status">{result} <Link to="/responses">Открыть отклики</Link></p> : null}
   </article>;
 }
 

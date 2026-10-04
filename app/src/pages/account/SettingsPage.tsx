@@ -155,7 +155,7 @@ export function SettingsPage() {
         onConfirm={() => void performSignOut()}
         onCancel={() => setConfirmSignOut(false)}
       >
-        <p>Вы выйдете только в этом браузере. Профиль, Резонансы и разговоры останутся в вашем аккаунте.</p>
+        <p>Вы выйдете только в этом браузере. Профиль, отклики и разговоры останутся в вашем аккаунте.</p>
       </ConfirmDialog>
     </>
   );

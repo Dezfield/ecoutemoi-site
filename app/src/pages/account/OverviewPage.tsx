@@ -82,9 +82,9 @@ export function OverviewPage() {
       </section>
 
       <section className="panel panel-muted" aria-labelledby="app-only-title">
-        <h2 id="app-only-title" className="panel-title">Голоса, Резонансы и чаты — в приложении</h2>
+        <h2 id="app-only-title" className="panel-title">Голоса, отклики и чаты — в приложении</h2>
         <p>
-          Аудиописьма, Отклики, Резонансы, Взаимность и переписка доступны в мобильном приложении Écoute Moi. Здесь
+          Аудиописьма, отклики, открытые анкеты и переписка доступны в мобильном приложении Écoute Moi. Здесь
           можно посмотреть анкету, статус аккаунта и заблокированных пользователей.
         </p>
       </section>

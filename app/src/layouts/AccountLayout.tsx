@@ -230,7 +230,7 @@ export function AccountLayout() {
 
       <nav className="product-bottom-nav" aria-label="Основные разделы">
         <NavLink to="/voices"><Icon name="wave" /><span>Голоса</span></NavLink>
-        <NavLink to="/resonances"><Icon name="star" /><span>Резонансы</span></NavLink>
+        <NavLink to="/responses"><Icon name="star" /><span>Отклики</span></NavLink>
         <NavLink to="/chats"><Icon name="bell" /><span>Чаты</span></NavLink>
         <NavLink to="/account"><Icon name="profile" /><span>Профиль</span></NavLink>
       </nav>
@@ -243,7 +243,7 @@ export function AccountLayout() {
         onConfirm={() => void performSignOut()}
         onCancel={() => setConfirmSignOut(false)}
       >
-        <p>Вы выйдете только в этом браузере. Профиль, Резонансы и разговоры останутся в вашем аккаунте.</p>
+        <p>Вы выйдете только в этом браузере. Профиль, отклики и разговоры останутся в вашем аккаунте.</p>
       </ConfirmDialog>
     </div>
   );

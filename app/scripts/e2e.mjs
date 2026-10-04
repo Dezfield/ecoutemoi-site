@@ -1069,11 +1069,15 @@ await step('product flow: voice response, resonance reveal, mutuality, chat send
   await axe(page, '/voices');
   assert.equal(await page.locator('.voice-card img').count(), 0, 'photos stay hidden before resonance');
   await page.getByRole('button', { name: 'Отклик' }).click();
-  await page.goto(`${APP}/resonances`);
+  // An old bookmark of the former section lands on «Отклики».
+  await page.goto(`${APP}/responses`);
+  await page.waitForURL(`${APP}/responses`);
   await page.getByRole('heading', { name: 'Мария' }).waitFor();
   await page.locator('.product-photos img').waitFor();
-  await noOverflow(page, '/resonances');
-  await axe(page, '/resonances');
+  assert.equal(await page.getByText(/[Рр]езонанс/).count(), 0, 'the retired name is not shown');
+  await page.getByRole('link', { name: 'Отклики' }).first().waitFor();
+  await noOverflow(page, '/responses');
+  await axe(page, '/responses');
   await page.getByRole('button', { name: 'Хочу продолжить' }).click();
   await page.getByRole('link', { name: 'Открыть чат' }).waitFor();
   await page.getByRole('link', { name: 'Открыть чат' }).click();
@@ -1122,7 +1126,7 @@ await step('audio-letter cohort: legacy discovery is replaced by an honest point
   await page.goto(`${APP}/voices`);
   await page.getByText('Знакомства теперь начинаются с аудиописьма').waitFor();
   assert.equal(voiceCalls(mock), 0, 'no legacy impressions are created');
-  await page.goto(`${APP}/resonances`);
+  await page.goto(`${APP}/responses`);
   await page.getByText('Знакомства теперь начинаются с аудиописьма').waitFor();
   assert(!mock.state.calls.some((call) => call.path === '/rest/v1/rpc/get_my_resonances_v6'), 'no legacy resonances');
   await page.getByRole('link', { name: '«Чаты»' }).click();
@@ -1184,7 +1188,7 @@ await step('mobile-created resonance and chat appear on web; foreign chat and re
     state.conversations = [{ conversation_id: CONVERSATION_ID, contact_id: CONTACT_ID, contact_name: 'Мария', contact_avatar_path: null, last_message_text: 'Сообщение с телефона', last_message_at: '2026-09-24T11:01:00Z', unread_count: 1, blocked_by_me: false, blocked_by_contact: false, lifecycle_status: 'active', comfort_state: 'normal', contact_restricted: false }];
     state.messages = [{ id: '99999999-9999-4999-8999-999999999999', conversation_id: CONVERSATION_ID, sender_id: CONTACT_ID, body: 'Сообщение с телефона', message_type: 'text', media_path: null, deleted_for_everyone_at: null, created_at: '2026-09-24T11:01:00Z' }];
   } });
-  await page.goto(`${APP}/resonances`);
+  await page.goto(`${APP}/responses`);
   await page.getByRole('heading', { name: 'Мария' }).waitFor();
   await page.goto(`${APP}/chats`);
   await page.getByText('Сообщение с телефона').waitFor();

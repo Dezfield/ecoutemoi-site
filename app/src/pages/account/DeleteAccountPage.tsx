@@ -132,7 +132,7 @@ export function DeleteAccountPage() {
             <p className="countdown-value" aria-hidden="true">{formatCountdown(remaining)}</p>
             <p className="visually-hidden" aria-live="polite">Удаление запустится через три минуты. Его можно отменить.</p>
             <p className="panel-text">
-              Когда таймер закончится, аккаунт будет удалён. Если скрыть или закрыть вкладку, удаление отменится.
+              Когда таймер закончится, запрос уйдёт на сервер. Результат появится после его ответа. Если скрыть или закрыть вкладку во время таймера, запрос отменится.
             </p>
             <button type="button" className="button button-primary" onClick={() => cancel()}>
               Отменить удаление

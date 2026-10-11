@@ -62,6 +62,10 @@ https://pd.rkn.gov.ru/cross-border-transmission/form/ . Веб-инструме�
 Карточки опубликования изменений (содержание сверено по полному 152-ФЗ):
 https://publication.pravo.gov.ru/document/0001202506240021 и
 https://publication.pravo.gov.ru/document/0001202502280034 .
+Официальный полный текст 149-ФЗ также повторно загружен 11 октября,
+HTTP 200: http://www.kremlin.ru/acts/bank/24157/print . Квалификация
+оператора и внедрение обязательных процессов этим чтением не заменяются.
+
 Проверка Apple: https://developer.apple.com/app-store/review/guidelines/
 и https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy/ .
 

@@ -9,10 +9,10 @@ import {
   parseOAuthProviders,
 } from '../../src/lib/env.ts';
 
-test('OAuth allowlist keeps only web-capable providers (never VK)', () => {
+test('OAuth allowlist keeps only broker providers (including VK)', () => {
   assert.deepEqual(parseOAuthProviders(undefined), []);
   assert.deepEqual(parseOAuthProviders(''), []);
-  assert.deepEqual(parseOAuthProviders(' Google , apple ,vk,github'), ['apple', 'google']);
+  assert.deepEqual(parseOAuthProviders(' Google , apple ,vk,github'), ['apple', 'google', 'vk']);
 });
 
 test('signup flag is strict opt-in: only "true" enables it', () => {

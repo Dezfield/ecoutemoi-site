@@ -1,5 +1,5 @@
 import type { OAuthProvider } from '../lib/env';
-import { rememberNextPath } from '../lib/redirect';
+import { startBroker } from './broker';
 import { requireSupabase } from '../lib/supabase';
 import { authCallbackUrl, config } from '../config';
 import type { CallbackParams } from './callback';
@@ -39,18 +39,11 @@ export async function verifyEmailCode(email: string, code: string): Promise<void
 }
 
 /**
- * Starts browser OAuth through Supabase. The browser leaves the app and
- * comes back to /auth/callback with a PKCE code. Only providers enabled for
- * this build are accepted (none while web signup is disabled, see config.ts).
+ * Starts the shared mobile identity broker's browser flow. No standard
+ * Supabase provider flow is substituted for an existing broker identity.
  */
 export async function startOAuth(provider: OAuthProvider, nextPath: string): Promise<void> {
-  if (!config.oauthProviders.includes(provider)) throw new Error('provider is not enabled');
-  rememberNextPath(nextPath);
-  const { error } = await requireSupabase().auth.signInWithOAuth({
-    provider,
-    options: { redirectTo: authCallbackUrl() },
-  });
-  if (error) throw error;
+  await startBroker(provider, nextPath);
 }
 
 /**
@@ -108,7 +101,10 @@ export async function completeAuthCallback(params: CallbackParams): Promise<Call
       return { recovery: recoveryEvent || params.typeHint === 'recovery' };
     }
     case 'token_hash': {
-      const { data, error } = await client.auth.verifyOtp({ token_hash: params.tokenHash, type: params.type });
+      const { data, error } = await client.auth.verifyOtp({
+        token_hash: params.tokenHash,
+        type: params.type,
+      });
       if (error) throw error;
       if (!data.session) throw new Error('Token verification returned no session.');
       return { recovery: params.type === 'recovery' };

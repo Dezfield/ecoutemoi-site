@@ -14,13 +14,10 @@ import { PrivacyPage } from './pages/account/PrivacyPage';
 import { ProfilePage } from './pages/account/ProfilePage';
 import { SecurityPage } from './pages/account/SecurityPage';
 import { SettingsPage } from './pages/account/SettingsPage';
-import { SubscriptionPage } from './pages/account/SubscriptionPage';
 import { SupportPage } from './pages/account/SupportPage';
+import { BrokerCallbackPage } from './pages/auth/BrokerCallbackPage';
 import { AuthCallbackPage } from './pages/auth/AuthCallbackPage';
-import { VoicesPage } from './pages/product/VoicesPage';
-import { RecordVoicePage } from './pages/product/RecordVoicePage';
-import { ResonancesPage } from './pages/product/ResonancesPage';
-import { AudioLettersGate } from './pages/product/AudioLettersGate';
+import { AudioLettersPage, ResponsesPage, VoiceThreadPage } from './pages/product/AudioLettersPage';
 import { ChatsPage } from './pages/product/ChatsPage';
 import { ChatPage } from './pages/product/ChatPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
@@ -35,10 +32,11 @@ import { SignupPage } from './pages/auth/SignupPage';
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/voices" replace />} />
+      <Route path="/" element={<Navigate to="/audio-letters" replace />} />
       <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
       <Route path="/signup" element={<PublicOnlyRoute><SignupPage /></PublicOnlyRoute>} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/auth/broker/callback" element={<BrokerCallbackPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
       <Route path="/account-deleted" element={<AccountDeletedPage />} />
@@ -52,20 +50,22 @@ export function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="voices" element={<AudioLettersGate title="Голоса"><VoicesPage /></AudioLettersGate>} />
-        <Route path="voices/record" element={<AudioLettersGate title="Голоса"><RecordVoicePage /></AudioLettersGate>} />
-        <Route path="responses" element={<AudioLettersGate title="Отклики"><ResonancesPage /></AudioLettersGate>} />
+        <Route path="audio-letters" element={<AudioLettersPage />} />
+        <Route path="voices/*" element={<Navigate to="/audio-letters" replace />} />
+
+        <Route path="responses" element={<ResponsesPage />} />
+        <Route path="responses/:threadId" element={<VoiceThreadPage />} />
         {/* Earlier links and bookmarks keep working. */}
         <Route path="resonances" element={<Navigate to="/responses" replace />} />
         <Route path="chats" element={<ChatsPage />} />
         <Route path="chats/:conversationId" element={<ChatPage />} />
-        <Route path="profile" element={<Navigate to="/account" replace />} />
+        <Route path="profile" element={<OverviewPage />} />
         <Route path="account" element={<OverviewPage />} />
         <Route path="account/profile" element={<ProfilePage />} />
         <Route path="account/settings" element={<SettingsPage />} />
         <Route path="account/privacy" element={<PrivacyPage />} />
         <Route path="account/notifications" element={<NotificationsPage />} />
-        <Route path="account/subscription" element={<SubscriptionPage />} />
+        <Route path="account/subscription" element={<Navigate to="/profile" replace />} />
         <Route path="account/security" element={<SecurityPage />} />
         <Route path="account/blocked" element={<BlockedPage />} />
         <Route path="account/support" element={<SupportPage />} />

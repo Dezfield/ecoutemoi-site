@@ -8,35 +8,27 @@ export type NavItem =
 export type NavGroup = { title: string | null; items: NavItem[] };
 
 /**
- * Account navigation. Future product areas (Голоса, Отклики, Чаты) are added
+ * Account navigation. Product areas (Аудиописьма, Отклики, Чаты) are added
  * here as new groups/routes without changing the shell.
  */
 export const accountNavigation: NavGroup[] = [
   {
     title: 'Écoute Moi',
     items: [
-      { kind: 'route', to: '/voices', label: 'Голоса', icon: 'wave' },
+      { kind: 'route', to: '/audio-letters', label: 'Аудиописьма', icon: 'wave' },
       { kind: 'route', to: '/responses', label: 'Отклики', icon: 'star' },
       { kind: 'route', to: '/chats', label: 'Чаты', icon: 'bell' },
-      { kind: 'route', to: '/account', label: 'Профиль', icon: 'profile' },
+      { kind: 'route', to: '/profile', label: 'Профиль', icon: 'profile' },
     ],
-  },
-  {
-    title: null,
-    items: [{ kind: 'route', to: '/account', label: 'Обзор', icon: 'home', end: true }],
   },
   {
     title: 'Мой аккаунт',
     items: [
-      { kind: 'route', to: '/account/profile', label: 'Профиль', icon: 'profile' },
+      { kind: 'route', to: '/account/profile', label: 'Анкета', icon: 'profile' },
       { kind: 'route', to: '/account/settings', label: 'Аккаунт и вход', icon: 'key' },
       { kind: 'route', to: '/account/privacy', label: 'Конфиденциальность', icon: 'lock' },
       { kind: 'route', to: '/account/notifications', label: 'Уведомления', icon: 'bell' },
     ],
-  },
-  {
-    title: 'Подписка',
-    items: [{ kind: 'route', to: '/account/subscription', label: 'Premium', icon: 'star' }],
   },
   {
     title: 'Безопасность',

@@ -19,7 +19,7 @@ export function PrivacyPage() {
       <section className="panel" aria-labelledby="by-design-title">
         <h2 id="by-design-title" className="panel-title">Приватность по замыслу</h2>
         <p className="panel-text">
-          Анкета и фотографии открываются другому человеку после взаимного Отклика. В карточке указывается город, а не
+          Анкета и фотографии открываются другому человеку после отдельного согласия каждого собеседника «Открыться». В карточке указывается город, а не
           точные координаты.
         </p>
       </section>
@@ -38,7 +38,7 @@ export function PrivacyPage() {
             </>
           )}
         </AsyncState>
-        <p className="panel-note">Статус относится к возможностям Premium и меняется в приложении.</p>
+        <p className="panel-note">Настройка меняется в приложении. Доступ бесплатный.</p>
       </section>
 
       <section className="panel" aria-labelledby="policy-title">

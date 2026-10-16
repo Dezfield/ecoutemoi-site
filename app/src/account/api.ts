@@ -368,7 +368,18 @@ export function appealErrorMessage(error: unknown): string {
  * is reported only for HTTP 200 with `{ deleted: true }`.
  */
 export async function deleteAccount(): Promise<void> {
-  const { data, error } = await requireSupabase().functions.invoke('delete-my-account', {
+  const client = requireSupabase();
+  const owner = (await client.auth.getUser()).data.user?.id;
+  if (!owner) throw new Error('Сессия завершилась. Войдите снова.');
+  // The legacy route may ignore action; authorization MUST use the v2 route.
+  const prepared = await client.functions.invoke('delete-my-account-v2', {
+    body: { confirmation: 'delete-my-account', action: 'authorization' },
+  });
+  if (prepared.error) throw prepared.error;
+  if (prepared.data?.appleRequired === true) throw new Error('Для удаления аккаунта подтвердите Apple в приложении Écoute Moi на iPhone. Аккаунт не удалён.');
+  if (prepared.data?.appleRequired !== false) throw new Error('Удаление не подтверждено сервером.');
+  if ((await client.auth.getUser()).data.user?.id !== owner) throw new Error('Аккаунт изменился. Повторите удаление.');
+  const { data, error } = await client.functions.invoke('delete-my-account-v2', {
     body: { confirmation: 'delete-my-account' },
   });
   if (error) throw error;

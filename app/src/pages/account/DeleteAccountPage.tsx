@@ -23,6 +23,7 @@ function httpStatus(error: unknown): number | null {
 }
 
 function deletionErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.startsWith('Для удаления аккаунта подтвердите Apple')) return error.message;
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   if (/failed to fetch|network|load failed|offline|relay/.test(message) && httpStatus(error) === null) {
     return 'Нет соединения с сервером. Аккаунт не удалён или удаление не завершено. Проверьте интернет и повторите.';

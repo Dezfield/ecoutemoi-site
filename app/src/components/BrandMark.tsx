@@ -8,7 +8,7 @@ export function Wordmark({ caption = true }: { caption?: boolean }) {
       <BrandMark size={40} />
       <span className="wordmark-text">
         Écoute Moi
-        {caption ? <span className="wordmark-caption">Личный кабинет</span> : null}
+        {caption ? <span className="wordmark-caption">Слушать. Слышать. Видеть.</span> : null}
       </span>
     </span>
   );

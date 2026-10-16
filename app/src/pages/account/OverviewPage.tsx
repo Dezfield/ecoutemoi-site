@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 
 import { useAccountData } from '../../account/AccountDataProvider';
-import { entitlementLabel, labels } from '../../account/labels';
+import { labels } from '../../account/labels';
 import { useAuth } from '../../auth/AuthProvider';
 import { Icon, type IconName } from '../../components/Icon';
 import { Notice } from '../../components/Notice';
@@ -15,12 +15,11 @@ const shortcuts: Array<{ to: string; icon: IconName; title: string; text: string
   { to: '/account/notifications', icon: 'bell', title: 'Уведомления', text: 'Где включаются уведомления' },
   { to: '/account/security', icon: 'shield', title: 'Безопасность', text: 'Статус аккаунта, обращения и сессии' },
   { to: '/account/privacy', icon: 'lock', title: 'Конфиденциальность', text: 'Что и когда видят другие' },
-  { to: '/account/subscription', icon: 'star', title: 'Premium', text: 'Текущий статус Premium' },
 ];
 
 export function OverviewPage() {
   const { user, status } = useAuth();
-  const { summary, entitlement } = useAccountData();
+  const { summary } = useAccountData();
   const data = summary.data;
   const age = ageFromBirthDate(data?.dating?.birthDate);
   const city = data?.dating?.city;
@@ -28,7 +27,7 @@ export function OverviewPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Личный кабинет" title="Обзор" />
+      <PageHeader eyebrow="Личный кабинет" title="Профиль" />
 
       <section className="panel profile-hero" aria-label="Ваш аккаунт">
         {summary.loading && !data ? (
@@ -54,9 +53,7 @@ export function OverviewPage() {
               {city ? <p className="profile-hero-meta">{[city, country].filter(Boolean).join(', ')}</p> : null}
               <p className="profile-hero-meta">{user?.email ?? 'Email не указан'}</p>
               <div className="chips">
-                {entitlement.data?.active ? (
-                  <span className="chip chip-accent">{entitlementLabel(entitlement.data)}</span>
-                ) : null}
+                <span className="chip chip-accent">Бесплатный доступ</span>
                 <span className="chip">
                   {status === 'authenticated_profile_ready' ? 'Анкета заполнена' : 'Анкета не завершена'}
                 </span>
@@ -82,10 +79,9 @@ export function OverviewPage() {
       </section>
 
       <section className="panel panel-muted" aria-labelledby="app-only-title">
-        <h2 id="app-only-title" className="panel-title">Голоса, отклики и чаты — в приложении</h2>
+        <h2 id="app-only-title" className="panel-title">Знакомство начинается с аудиописьма</h2>
         <p>
-          Аудиописьма, отклики, открытые анкеты и переписка доступны в мобильном приложении Écoute Moi. Здесь
-          можно посмотреть анкету, статус аккаунта и заблокированных пользователей.
+          Аудиописьма, отклики и чаты доступны в браузере и приложении с одним аккаунтом. Фотографии открываются только после отдельного согласия каждого собеседника.
         </p>
       </section>
     </>

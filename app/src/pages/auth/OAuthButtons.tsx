@@ -24,6 +24,7 @@ export function OAuthButtons({ nextPath, linking = false }: { nextPath: string; 
 
   const [ready, setReady] = useState({ apple: false, google: false, vk: false });
   useEffect(() => {
+    if (!config.oauthProviders.length) return;
     let active = true;
     void browserProviders()
       .then((value) => {

@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Link } from 'react-router';
 import { requireSupabase } from '../../lib/supabase';
 import { validateEmail, userFacingAuthError } from '../../auth/errors';
 export function EmailPasswordForm() {
+  const emailId = useId();
+  const passwordId = useId();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -34,26 +36,28 @@ export function EmailPasswordForm() {
           })();
         }}
       >
-        <label>
-          Почта для входа с паролем
+        <div className="field">
+          <label htmlFor={emailId}>Почта для входа с паролем</label>
           <input
+            id={emailId}
             type="email"
             required
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-        </label>
-        <label>
-          Пароль
+        </div>
+        <div className="field">
+          <label htmlFor={passwordId}>Пароль</label>
           <input
+            id={passwordId}
             type="password"
             required
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-        </label>
+        </div>
         <button className="button button-primary" disabled={busy}>
           Войти с паролем
         </button>

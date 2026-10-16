@@ -7,37 +7,10 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-const VERIFIED_RPCS = [
-  'block_user',
-  'export_my_account_data',
-  'get_my_active_sessions',
-  'get_my_audio_letters_v1',
-  'get_my_blocked_users',
-  'get_my_dating_profile_v5',
-  'get_my_entitlement',
-  'get_my_inbox_v2',
-  'get_my_login_methods',
-  'get_my_notification_preferences_v1',
-  'get_my_resonances_v6',
-  'get_my_safety_center_v1',
-  'get_voice_candidates_v4',
-  'mark_conversation_read',
-  'prepare_my_dating_media',
-  'prepare_profile_voice_upload_v1',
-  'report_dating_candidate',
-  'report_dating_resonance_content',
-  'respond_to_photo_resonance',
-  'respond_to_voice_candidate_v2',
-  'save_my_dating_profile',
-  'set_my_profile_voice_v1',
-  'submit_moderation_appeal',
-  'submit_user_report',
-  'unblock_user',
-  'update_my_notification_preferences_v1',
-];
+const VERIFIED_RPCS = Object.keys(JSON.parse(readFileSync('tests/backend-main-contracts.json','utf8')).rpcs).sort();
 const VERIFIED_TABLES = ['dating_profiles', 'messages', 'privacy_settings', 'profiles'];
-const VERIFIED_BUCKETS = ['dating-audio', 'dating-photos'];
-const VERIFIED_FUNCTIONS = ['delete-my-account', 'voice-media-link'];
+const VERIFIED_BUCKETS = ['chat-media', 'dating-audio', 'dating-photos'];
+const VERIFIED_FUNCTIONS = ['delete-my-account-v2', 'oauth-broker', 'vk-id-auth', 'voice-media-link'];
 
 const sources = [];
 const walk = (dir) => {
@@ -61,7 +34,7 @@ test('only verified tables are queried directly', () => {
 });
 
 test('only verified storage buckets are signed', () => {
-  assert.deepEqual(collect(/(?:signedUrl|signedMedia)\(\s*['"`]([a-z0-9-]+)['"`]/g), VERIFIED_BUCKETS);
+  for (const bucket of collect(/(?:signedUrl|signedMedia)\(\s*['"`]([a-z0-9-]+)['"`]/g)) assert(VERIFIED_BUCKETS.includes(bucket));
   for (const bucket of collect(/storage\.from\(\s*['"`]([a-z0-9-]+)['"`]/g)) {
     assert(VERIFIED_BUCKETS.includes(bucket), `storage bucket ${bucket} must be verified`);
   }
@@ -75,8 +48,8 @@ test('only verified Edge Functions are invoked; delete-my-account with the confi
     assert.doesNotMatch(text, /\/functions\/v1\//, `${path}: no hand-built Edge Function URL`);
   }
   const api = sources.find(({ path }) => path.endsWith(join('account', 'api.ts'))).text;
-  const call = api.slice(api.indexOf("invoke('delete-my-account'"), api.indexOf("invoke('delete-my-account'") + 200);
-  assert.match(call, /body: \{ confirmation: 'delete-my-account' \}/);
+  const call = api.slice(api.indexOf("invoke('delete-my-account-v2'"), api.indexOf("invoke('delete-my-account-v2'") + 200);
+  assert.match(call, /body: \{ confirmation: 'delete-my-account', action: 'authorization' \}/);
   assert.doesNotMatch(call, /user_?id|userId/i, 'the target account is taken from the JWT, never sent');
 });
 

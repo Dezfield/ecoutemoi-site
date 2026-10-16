@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useAccountData } from '../account/AccountDataProvider';
-import { entitlementLabel } from '../account/labels';
 import { useAuth } from '../auth/AuthProvider';
 import { Wordmark } from '../components/BrandMark';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -14,10 +13,10 @@ import { accountNavigation } from './navigation';
 
 function Identity() {
   const { user } = useAuth();
-  const { summary, entitlement } = useAccountData();
+  const { summary } = useAccountData();
   const name = summary.data?.displayName ?? '';
   const photoUrl = summary.data?.photoUrl ?? null;
-  const plan = entitlement.data?.active ? entitlementLabel(entitlement.data) : null;
+  const plan = 'Бесплатный доступ';
   return (
     <div className="identity">
       <span className="avatar avatar-small" aria-hidden="true">
@@ -153,14 +152,14 @@ export function AccountLayout() {
       <a className="skip-link" href="#account-content">Перейти к содержимому</a>
 
       <aside className="sidebar">
-        <Link to="/voices" className="sidebar-brand" aria-label="Écoute Moi — Голоса">
+        <Link to="/audio-letters" className="sidebar-brand" aria-label="Écoute Moi — Аудиописьма">
           <Wordmark />
         </Link>
         <AccountNav onSignOut={requestSignOut} />
       </aside>
 
       <header className="topbar">
-        <Link to="/voices" className="sidebar-brand" aria-label="Écoute Moi — Голоса">
+        <Link to="/audio-letters" className="sidebar-brand" aria-label="Écoute Moi — Аудиописьма">
           <Wordmark caption={false} />
         </Link>
         <button
@@ -229,10 +228,10 @@ export function AccountLayout() {
       </main>
 
       <nav className="product-bottom-nav" aria-label="Основные разделы">
-        <NavLink to="/voices"><Icon name="wave" /><span>Голоса</span></NavLink>
+        <NavLink to="/audio-letters"><Icon name="wave" /><span>Аудиописьма</span></NavLink>
         <NavLink to="/responses"><Icon name="star" /><span>Отклики</span></NavLink>
         <NavLink to="/chats"><Icon name="bell" /><span>Чаты</span></NavLink>
-        <NavLink to="/account"><Icon name="profile" /><span>Профиль</span></NavLink>
+        <NavLink to="/profile"><Icon name="profile" /><span>Профиль</span></NavLink>
       </nav>
 
       <ConfirmDialog

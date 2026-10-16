@@ -1,0 +1,185 @@
+{
+  "mobile_main": "e6be69b193b81848ab5b282b6390da413e82ac2f",
+  "rpcs": {
+    "mark_conversation_read": {
+      "source": "supabase/schema.sql",
+      "line": 575,
+      "arguments": "p_conversation_id uuid"
+    },
+    "block_user": {
+      "source": "supabase/migrations/20260810_safety_foundation.sql",
+      "line": 387,
+      "arguments": "p_blocked_user_id uuid"
+    },
+    "get_my_blocked_users": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 1419,
+      "arguments": ""
+    },
+    "submit_user_report": {
+      "source": "supabase/migrations/20260810_safety_foundation.sql",
+      "line": 472,
+      "arguments": "p_reported_user_id uuid, p_conversation_id uuid, p_message_id uuid, p_category text, p_details text"
+    },
+    "unblock_user": {
+      "source": "supabase/migrations/20260810_safety_foundation.sql",
+      "line": 431,
+      "arguments": "p_blocked_user_id uuid"
+    },
+    "get_message_reactions": {
+      "source": "supabase/migrations/20260811_message_reactions.sql",
+      "line": 118,
+      "arguments": "p_message_ids uuid[]"
+    },
+    "toggle_message_reaction": {
+      "source": "supabase/migrations/20260811_message_reactions.sql",
+      "line": 39,
+      "arguments": "p_message_id uuid, p_reaction_code text"
+    },
+    "get_my_dating_profile_v5": {
+      "source": "supabase/migrations/20260813_country_city_selection.sql",
+      "line": 38,
+      "arguments": ""
+    },
+    "delete_chat_message_for_everyone": {
+      "source": "supabase/migrations/20260825_zz_admin_center_v3.sql",
+      "line": 584,
+      "arguments": "p_message_id uuid"
+    },
+    "edit_chat_message": {
+      "source": "supabase/migrations/20260813_voice_letter_chat_safety.sql",
+      "line": 437,
+      "arguments": "p_message_id uuid, p_body text"
+    },
+    "submit_moderation_appeal": {
+      "source": "supabase/migrations/20260921120100_account_rpc_deletion_guards.sql",
+      "line": 351,
+      "arguments": "p_sanction_id uuid, p_reason text"
+    },
+    "consume_image_message": {
+      "source": "supabase/migrations/20260820_chat_product_premium.sql",
+      "line": 409,
+      "arguments": "p_message_id uuid"
+    },
+    "get_my_entitlement": {
+      "source": "supabase/migrations/20261003154352_free_launch_access.sql",
+      "line": 9,
+      "arguments": ""
+    },
+    "get_my_inbox_v2": {
+      "source": "supabase/migrations/20260820_relationship_lifecycle_voice10.sql",
+      "line": 126,
+      "arguments": ""
+    },
+    "get_my_login_methods": {
+      "source": "supabase/migrations/20260925160000_apple_google_broker.sql",
+      "line": 548,
+      "arguments": ""
+    },
+    "export_my_account_data": {
+      "source": "supabase/migrations/20260921120100_account_rpc_deletion_guards.sql",
+      "line": 136,
+      "arguments": ""
+    },
+    "get_my_active_sessions": {
+      "source": "supabase/migrations/20260921120100_account_rpc_deletion_guards.sql",
+      "line": 104,
+      "arguments": ""
+    },
+    "get_my_safety_center_v1": {
+      "source": "supabase/migrations/20260921120100_account_rpc_deletion_guards.sql",
+      "line": 253,
+      "arguments": ""
+    },
+    "get_my_notification_preferences_v1": {
+      "source": "supabase/migrations/20260921120100_account_rpc_deletion_guards.sql",
+      "line": 414,
+      "arguments": ""
+    },
+    "update_my_notification_preferences_v1": {
+      "source": "supabase/migrations/20260921120100_account_rpc_deletion_guards.sql",
+      "line": 445,
+      "arguments": "p_messages_enabled boolean, p_dating_enabled boolean, p_product_enabled boolean, p_quiet_hours_enabled boolean, p_quiet_start text, p_quiet_end text, p_timezone text, p_delivery_mode text"
+    },
+    "end_voice_thread_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 2422,
+      "arguments": "p_thread_id uuid"
+    },
+    "get_audio_letter_feed_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 1939,
+      "arguments": "p_limit integer default 5"
+    },
+    "get_my_audio_letters_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 1732,
+      "arguments": ""
+    },
+    "get_my_disclosed_profiles_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 2563,
+      "arguments": ""
+    },
+    "get_my_voice_threads_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 2210,
+      "arguments": ""
+    },
+    "get_voice_thread_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 2235,
+      "arguments": "p_thread_id uuid"
+    },
+    "mark_audio_letter_listened_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 2042,
+      "arguments": "p_impression_id uuid, p_completed boolean default false"
+    },
+    "mark_voice_thread_message_listened_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 2373,
+      "arguments": "p_message_id uuid"
+    },
+    "prepare_voice_upload_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 1777,
+      "arguments": "p_purpose text"
+    },
+    "publish_audio_letter_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 1801,
+      "arguments": "p_storage_path text, p_duration_seconds integer, p_topic_key text, p_title text default null"
+    },
+    "report_voice_content_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 2653,
+      "arguments": "p_target_type text, p_target_id uuid, p_category text, p_details text default '', p_block_user boolean default true"
+    },
+    "send_letter_response_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 2104,
+      "arguments": "p_impression_id uuid, p_storage_path text, p_duration_seconds integer, p_client_message_id uuid, p_anchor_timestamp_ms integer default null"
+    },
+    "send_voice_thread_message_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 2275,
+      "arguments": "p_thread_id uuid, p_storage_path text, p_duration_seconds integer, p_client_message_id uuid"
+    },
+    "set_audio_letter_status_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 1874,
+      "arguments": "p_letter_id uuid, p_status text"
+    },
+    "set_disclosure_consent_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 2456,
+      "arguments": "p_thread_id uuid, p_consent boolean"
+    },
+    "skip_audio_letter_v1": {
+      "source": "supabase/migrations/20261001120000_audio_letters_mutual_disclosure.sql",
+      "line": 2075,
+      "arguments": "p_impression_id uuid"
+    }
+  }
+}

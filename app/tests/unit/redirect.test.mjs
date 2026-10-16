@@ -6,7 +6,7 @@ import { consumeNextPath, rememberNextPath, safeInternalPath } from '../../src/l
 test('accepts internal product and account paths', () => {
   assert.equal(safeInternalPath('/account'), '/account');
   assert.equal(safeInternalPath('/account/security?tab=1#x'), '/account/security?tab=1#x');
-  assert.equal(safeInternalPath('/voices'), '/voices');
+  assert.equal(safeInternalPath('/audio-letters'), '/audio-letters');
   assert.equal(safeInternalPath('/responses'), '/responses');
   assert.equal(safeInternalPath('/resonances'), '/resonances', 'old bookmarks still resolve (the route redirects)');
   assert.equal(safeInternalPath('/chats/00000000-0000-0000-0000-000000000001'), '/chats/00000000-0000-0000-0000-000000000001');
@@ -28,7 +28,7 @@ test('rejects open-redirect and non-private targets', () => {
     '  //evil.example',
     '/account/../login',
   ]) {
-    assert.equal(safeInternalPath(value), '/voices', String(value));
+    assert.equal(safeInternalPath(value), '/audio-letters', String(value));
   }
 });
 
@@ -41,9 +41,9 @@ test('remember/consume next path uses storage once and validates it', () => {
   };
   rememberNextPath('/account/blocked', storage);
   assert.equal(consumeNextPath(storage), '/account/blocked');
-  assert.equal(consumeNextPath(storage), '/voices');
+  assert.equal(consumeNextPath(storage), '/audio-letters');
   store.set('ecoutemoi.auth.next', 'https://evil.example');
-  assert.equal(consumeNextPath(storage), '/voices');
+  assert.equal(consumeNextPath(storage), '/audio-letters');
 });
 
 test('storage failures fall back to the default destination', () => {
@@ -53,5 +53,5 @@ test('storage failures fall back to the default destination', () => {
     removeItem: () => { throw new Error('blocked'); },
   };
   assert.doesNotThrow(() => rememberNextPath('/account/profile', broken));
-  assert.equal(consumeNextPath(broken), '/voices');
+  assert.equal(consumeNextPath(broken), '/audio-letters');
 });

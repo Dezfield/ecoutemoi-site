@@ -3,16 +3,13 @@
  * `import.meta.env` so they can be unit-tested under Node.
  */
 
-export type OAuthProvider = 'apple' | 'google';
+export type OAuthProvider = 'apple' | 'google' | 'vk';
 
-const SUPPORTED_OAUTH_PROVIDERS: readonly OAuthProvider[] = ['apple', 'google'];
+const SUPPORTED_OAUTH_PROVIDERS: readonly OAuthProvider[] = ['apple', 'google', 'vk'];
 
 /**
- * Parses a comma-separated provider allowlist. Only standard Supabase Auth
- * providers that the web client can start with signInWithOAuth are accepted.
- * VK is excluded: it is not a standard Supabase Auth provider, and
- * ecoutemoi-mobile main contains no VK backend, so web VK sign-in is not
- * implemented (see docs/WEB_BACKEND_MATRIX.md).
+ * Browser broker providers. Configuration alone is insufficient: the UI also
+ * requires the corresponding server web capability, separate from native QA.
  */
 export function parseOAuthProviders(raw: string | undefined): OAuthProvider[] {
   if (!raw) return [];

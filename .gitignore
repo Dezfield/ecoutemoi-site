@@ -8,6 +8,7 @@ qa/*.html
 qa/*.json
 qa/*.png
 !qa/README.md
+qa/web2/
 docs/AUDIT_REPORT.md
 docs/PREVIEW_REPORT.md
 docs/OWNER_REVIEW.md

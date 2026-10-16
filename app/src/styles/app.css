@@ -453,3 +453,42 @@ button:disabled { cursor: not-allowed; }
 .countdown-progress { font-family: var(--serif); font-size: 32px; line-height: 1.1; color: var(--text); }
 .appeal-form { margin-top: 18px; }
 @media (max-width: 560px) { .toggle-row { align-items: flex-start; } }
+/* Web 2.0: the same dark surfaces and orange accent, with room for desktop. */
+.letter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 20px; margin: 24px 0; }
+.thread-link { display: block; color: inherit; text-decoration: none; }
+.voice-player audio, .voice-composer audio { width: 100%; margin: 12px 0; }
+.voice-composer { padding: 20px 0; }
+.voice-thread { list-style: none; padding: 0; }
+.voice-thread li, .own-letter { padding: 20px 0; border-bottom: 1px solid #30433a; }
+.product-page input, .product-page select { max-width: 100%; }
+.product-page label { display: grid; gap: 8px; margin: 12px 0; }
+.chat-tabs { display: flex; gap: 8px; overflow-x: auto; margin: 24px 0; padding-bottom: 8px; }
+.chat-tabs button, .reaction-summary button { background: #172e23; border: 1px solid #385344; border-radius: 20px; padding: 10px 14px; color: #f8f4eb; white-space: nowrap; }
+.chat-tabs [aria-selected="true"], .reaction-summary [aria-pressed="true"] { border-color: #f08643; background: #483322; }
+.message-bubble { overflow-wrap: anywhere; }
+.message-bubble blockquote { border-left: 2px solid #ee965a; padding-left: 12px; margin: 0 0 12px; opacity: .8; }
+.branded-emoji { width: 88px; height: 88px; object-fit: contain; }
+.branded-sticker { width: min(180px, 100%); height: 180px; object-fit: contain; }
+.graphic-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); gap: 12px; padding: 18px; background: #12271d; border-radius: 20px; }
+.graphic-picker button { display: grid; justify-items: center; gap: 6px; background: transparent; color: #f5efe5; border: 1px solid #385344; border-radius: 12px; padding: 8px; }
+.graphic-picker img { width: 64px; height: 64px; object-fit: contain; }
+.chat-attachments { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 12px 0; }
+.chat-attachments input { width: min(220px, 100%); }
+.photo-preview { display: grid; gap: 12px; margin: 20px 0; padding: 20px; background: #182d22; border-radius: 20px; }
+.photo-preview img { max-width: 100%; max-height: 360px; object-fit: contain; justify-self: start; }
+.photo-dialog { background: #0c1d14; color: #fff; border: 1px solid #526d59; border-radius: 20px; padding: 20px; max-width: 95vw; max-height: 95dvh; }
+.photo-dialog::backdrop { background: #000d; }
+.photo-dialog img { display: block; max-width: 85vw; max-height: 75dvh; object-fit: contain; margin-top: 12px; }
+.revealed-photos { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.revealed-photos img { width: 100%; height: auto; object-fit: contain; border-radius: 16px; }
+.moment-timeline { list-style: none; padding: 0 0 0 24px; border-left: 1px solid #5c6543; }
+.moment-timeline li { margin: 24px 0; }
+@media (max-width: 767px) { .product-bottom-nav { padding-bottom: max(10px, env(safe-area-inset-bottom)); } .account-main { padding-bottom: calc(90px + env(safe-area-inset-bottom)); } .chat-tabs { max-width: calc(100vw - 40px); } }
+.chat-workspace { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; }
+.chat-inbox { border-right: 1px solid #30433a; padding-right: 18px; }
+.chat-inbox a { display: grid; gap: 8px; color: inherit; text-decoration: none; padding: 16px 10px; border-radius: 12px; }
+.chat-inbox a[aria-current="page"] { background: #254432; }
+.chat-inbox span { font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .chat-workspace { display: block; } .chat-inbox { display: none; } }
+.product-page input:not([type="file"]), .product-page select { min-height: 46px; padding: 12px 14px; background: var(--field); color: var(--text); border: 1px solid var(--border-bright); border-radius: 12px; font: inherit; width: 100%; }
+.product-page input:focus-visible, .product-page select:focus-visible { outline: 2px solid var(--accent-light); outline-offset: 3px; }

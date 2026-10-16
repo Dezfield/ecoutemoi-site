@@ -1,3 +1,4 @@
+import { OAuthButtons } from '../auth/OAuthButtons';
 import { useState } from 'react';
 import { Link } from 'react-router';
 
@@ -71,6 +72,7 @@ export function SettingsPage() {
 
   return (
     <>
+      <OAuthButtons nextPath="/account/settings" linking />
       <PageHeader eyebrow="Мой аккаунт" title="Аккаунт и вход">
         <p>Данные входа в ваш аккаунт Écoute Moi.</p>
       </PageHeader>

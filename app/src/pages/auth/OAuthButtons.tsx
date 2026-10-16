@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { AUTH_CANCELLED_MESSAGE, authErrorMessage } from '../../auth/errors';
-import { startOAuth } from '../../auth/service';
+import { browserProviders, startBroker } from '../../auth/broker';
 import { Notice } from '../../components/Notice';
 import { config } from '../../config';
 import type { OAuthProvider } from '../../lib/env';
 
 const providerLabels: Record<OAuthProvider, string> = {
+  vk: 'Продолжить с VK',
   apple: 'Продолжить с Apple',
   google: 'Продолжить с Google',
 };
@@ -17,18 +18,31 @@ const providerLabels: Record<OAuthProvider, string> = {
  * config.ts) are rendered, so the page never offers a provider whose web
  * redirect is not configured.
  */
-export function OAuthButtons({ nextPath }: { nextPath: string }) {
+export function OAuthButtons({ nextPath, linking = false }: { nextPath: string; linking?: boolean }) {
   const [busy, setBusy] = useState<OAuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (!config.oauthProviders.length) return null;
+  const [ready, setReady] = useState({ apple: false, google: false, vk: false });
+  useEffect(() => {
+    let active = true;
+    void browserProviders()
+      .then((value) => {
+        if (active) setReady(value);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  const providers = config.oauthProviders.filter((provider) => ready[provider]);
+  if (!providers.length) return null;
 
   const start = async (provider: OAuthProvider) => {
     if (busy) return;
     setBusy(provider);
     setError(null);
     try {
-      await startOAuth(provider, nextPath); // navigates away on success
+      await startBroker(provider, nextPath, linking); // navigates away on success
     } catch (nextError) {
       const message = authErrorMessage(nextError);
       if (message !== AUTH_CANCELLED_MESSAGE) setError(message);
@@ -38,7 +52,7 @@ export function OAuthButtons({ nextPath }: { nextPath: string }) {
 
   return (
     <div className="oauth">
-      {config.oauthProviders.map((provider) => (
+      {providers.map((provider) => (
         <button
           key={provider}
           type="button"
@@ -46,7 +60,11 @@ export function OAuthButtons({ nextPath }: { nextPath: string }) {
           onClick={() => void start(provider)}
           disabled={Boolean(busy)}
         >
-          {busy === provider ? 'Переходим…' : providerLabels[provider]}
+          {busy === provider
+            ? 'Переходим…'
+            : linking
+              ? `Подключить ${provider === 'apple' ? 'Apple' : provider === 'google' ? 'Google' : 'VK'}`
+              : providerLabels[provider]}
         </button>
       ))}
       {error ? <Notice tone="error">{error}</Notice> : null}
@@ -59,28 +77,19 @@ export function OAuthButtons({ nextPath }: { nextPath: string }) {
  * an email code opens the same account as another sign-in method: that holds
  * only when this email is the one stored in that account.
  */
-const oauthNames: Array<[OAuthProvider, string]> = [['apple', 'Apple'], ['google', 'Google']];
 
 export function UnavailableProvidersNote() {
-  const missing = [
-    'по номеру телефона',
-    ...oauthNames.filter(([provider]) => !config.oauthProviders.includes(provider)).map(([, name]) => `через ${name}`),
-    'через VK',
-  ];
-  const list = `${missing.slice(0, -1).join(', ')} и ${missing[missing.length - 1]}`;
   return (
     <p className="form-footnote">
-      Вход {list} на сайте пока недоступен. Если вы входите в приложение этими способами, пользуйтесь приложением
-      Écoute Moi: вход по коду на почту не обязательно откроет тот же аккаунт.
+      Доступные способы входа показаны выше. Для входа по почте используйте адрес, подключённый к вашему
+      аккаунту.
     </p>
   );
 }
 
 /**
- * Age notice and links to the public documents. The Terms and the Privacy
- * Policy on the public site are not approved yet, so the web does not state
- * that continuing means accepting them; consent wording is a release blocker
- * for web signup (docs/WEB_APP_DEPLOYMENT.md).
+ * Age notice and links to the published documents. Registration consent and
+ * onboarding acceptance remain a separate release gate, defaulting off.
  */
 export function LegalNote() {
   return (

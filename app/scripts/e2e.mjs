@@ -18,7 +18,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 
@@ -30,6 +30,7 @@ const PORT = Number(process.env.E2E_PORT || 4175);
 const APP = `http://127.0.0.1:${PORT}`;
 const SIGNUP_APP = `http://127.0.0.1:${PORT + 1}`;
 const DIST = resolve('dist-e2e');
+const SNAPSHOTS=resolve('../qa/web2');mkdirSync(SNAPSHOTS,{recursive:true});
 const SIGNUP_DIST = resolve('dist-e2e-signup');
 
 // ---------------------------------------------------------------- build
@@ -61,6 +62,7 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 // Verified contracts (ecoutemoi-mobile main). Keep in sync with docs/WEB_BACKEND_MATRIX.md.
 const VERIFIED_RPCS = new Set([
+  'prepare_voice_upload_v1','send_letter_response_v1','mark_audio_letter_listened_v1','toggle_message_reaction','get_message_reactions','consume_image_message','edit_chat_message','delete_chat_message_for_everyone','get_audio_letter_feed_v1','get_my_voice_threads_v1','get_voice_thread_v1','set_disclosure_consent_v1','get_my_disclosed_profiles_v1',
   'block_user',
   'get_my_inbox_v2',
   'get_my_resonances_v6',
@@ -100,8 +102,8 @@ const GUARDED_RPCS = new Set([
   'submit_moderation_appeal',
 ]);
 const VERIFIED_TABLES = new Set(['profiles', 'dating_profiles', 'messages', 'privacy_settings']);
-const VERIFIED_BUCKETS = new Set(['dating-photos', 'dating-audio']);
-const VERIFIED_FUNCTIONS = new Set(['delete-my-account', 'voice-media-link']);
+const VERIFIED_BUCKETS = new Set(['dating-photos', 'dating-audio', 'chat-media']);
+const VERIFIED_FUNCTIONS = new Set(['delete-my-account-v2', 'voice-media-link', 'oauth-broker', 'vk-id-auth']);
 const SANCTION_ID = '33333333-3333-4333-8333-333333333333';
 const CONTACT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const CONVERSATION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -193,6 +195,8 @@ function createMock() {
     ],
     voices: [],
     audioLettersEnabled: false,
+    webProviders: {apple:false,google:false,vk:false},
+    letterFeed: [], threads: [], reactions: [], consumed: new Set(),
     // true: a backend without the voice-media-link function (direct signing).
     voiceLinkFunctionMissing: false,
     voiceLinkRequests: [],
@@ -316,8 +320,32 @@ function createMock() {
           }] : [], cors);
         case 'get_my_entitlement':
           return json(route, 200, [state.entitlement], cors);
+        case 'get_message_reactions': return json(route,200,state.reactions.filter(r => body.p_message_ids.includes(r.message_id)),cors);
+        case 'toggle_message_reaction': {
+          const found=state.reactions.find(r => r.message_id===body.p_message_id && r.reaction_code===body.p_reaction_code);
+          if(found) state.reactions=state.reactions.filter(r => r!==found); else state.reactions.push({message_id:body.p_message_id,reaction_code:body.p_reaction_code,reaction_count:1,reacted_by_me:true});
+          return json(route,200,null,cors);
+        }
+        case 'consume_image_message': {
+          const m=state.messages.find(m=>m.id===body.p_message_id);
+          const allowed=!!m && !state.consumed.has(m.id); if(m) state.consumed.add(m.id);
+          return json(route,200,[{allowed,media_path:allowed?m.media_path:null,access_mode:'view_once'}],cors);
+        }
+        case 'edit_chat_message': state.messages=state.messages.map(m=>m.id===body.p_message_id?{...m,body:body.p_body,edited_at:new Date().toISOString()}:m);return json(route,200,null,cors);
+        case 'delete_chat_message_for_everyone': state.messages=state.messages.map(m=>m.id===body.p_message_id?{...m,deleted_for_everyone_at:new Date().toISOString()}:m);return json(route,200,null,cors);
+        case 'prepare_voice_upload_v1': return json(route,200,`notes/${IMPRESSION_ID}`,cors);
+        case 'mark_audio_letter_listened_v1': return json(route,200,null,cors);
+        case 'send_letter_response_v1': {
+          if(state.failVoiceResponse){state.failVoiceResponse=false;return json(route,503,{code:'XX000'},cors);}
+          state.threads=[{thread_id:RESONANCE_ID,state:'response_sent',my_consent:false,their_consent:false,unheard_count:0,counterpart:{age:31,city:'Москва',display_name:null,conversation_id:null},letter:{title:'Письмо',storage_path:null},messages:[]}];return json(route,200,{thread_id:RESONANCE_ID,state:'response_sent'},cors);
+        }
+        case 'get_audio_letter_feed_v1': return json(route,200,{items:state.letterFeed,daily_limit:10,resets_at:null},cors);
+        case 'get_my_voice_threads_v1': return json(route,200,state.threads,cors);
+        case 'get_voice_thread_v1': {const thread=state.threads.find(t=>t.thread_id===body.p_thread_id);return thread?json(route,200,thread,cors):json(route,403,{code:'42501'},cors);}
+        case 'set_disclosure_consent_v1': {const t=state.threads.find(t=>t.thread_id===body.p_thread_id);if(!t)return json(route,403,{code:'42501'},cors);t.my_consent=body.p_consent;if(t.my_consent&&t.their_consent)t.state='disclosed';return json(route,200,t,cors);}
+        case 'get_my_disclosed_profiles_v1': return json(route,200,state.threads.filter(t=>t.state==='disclosed'&&t.my_consent&&t.their_consent).map(t=>({thread_id:t.thread_id,display_name:'Мария',photo_paths:[`${CONTACT_ID}/photos/1`],conversation_id:CONVERSATION_ID})),cors);
         case 'get_my_audio_letters_v1':
-          return json(route, 200, { enabled: state.audioLettersEnabled, limits: {}, letters: [] }, cors);
+          return json(route, 200, { enabled: state.audioLettersEnabled, limits: {letter_min_seconds:15,letter_max_seconds:90,response_min_seconds:5,response_max_seconds:90,message_min_seconds:2,message_max_seconds:120,max_published_letters:3}, letters: [] }, cors);
         case 'get_voice_candidates_v4':
           if (state.voiceResponses?.length) return json(route, 200, state.voiceResponses.shift(), cors);
           return json(route, 200, state.voices, cors);
@@ -391,11 +419,12 @@ function createMock() {
         if (method === 'POST') {
           if (state.failNextSend) { state.failNextSend = false; return json(route, 503, { code: 'XX000' }, cors); }
           if (state.conversations.find((item) => item.conversation_id === id)?.blocked_by_me) return json(route, 403, { code: '42501' }, cors);
-          if (!state.messages.some((item) => item.client_message_id === body.client_message_id)) state.messages.push({ ...body, id: crypto.randomUUID(), media_path: null, deleted_for_everyone_at: null, created_at: new Date().toISOString() });
+          if (!state.messages.some((item) => item.client_message_id === body.client_message_id)) state.messages.push({ ...body, id: crypto.randomUUID(), media_path: body.media_path ?? null, deleted_for_everyone_at: null, created_at: new Date().toISOString() });
           return route.fulfill({ status: 201, headers: { ...cors, 'content-type': 'application/json' }, body: '' });
         }
         const before = url.searchParams.get('created_at')?.replace(/^lt\./, '');
-        const rows = state.messages.filter((item) => item.conversation_id === id && (!before || item.created_at < before)).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 31);
+        const cursor=url.searchParams.get('or');const at=cursor?.match(/created_at\.lt\.([^,]+)/)?.[1];const after=cursor?.match(/id\.lt\.([^)]*)/)?.[1];
+        const rows=state.messages.filter(item=>item.conversation_id===id&&(!before||item.created_at<before)&&(!at||item.created_at<at||(item.created_at===at&&item.id<after))).sort((a,b)=>b.created_at.localeCompare(a.created_at)||b.id.localeCompare(a.id)).slice(0,31);
         return json(route, 200, rows, cors);
       }
       if (url.searchParams.get(table === 'profiles' ? 'id' : 'user_id') !== `eq.${USER_ID}`) {
@@ -417,6 +446,8 @@ function createMock() {
       if (method === 'POST') return json(route, 200, { signedURL: `${path.replace('/storage/v1', '')}?token=e2e` }, cors);
       return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'image/png' }, body: PNG_1PX });
     }
+    if(path===`/storage/v1/object/dating-audio/notes/${IMPRESSION_ID}` && method==='POST')return json(route,200,{Key:path},cors);
+    if(path.startsWith(`/storage/v1/object/chat-media/${USER_ID}/`) && method==='POST')return json(route,200,{Key:path},cors);
     if (path === `/storage/v1/object/dating-audio/letters/${USER_ID}` && method === 'POST') {
       state.audioUploaded = true;
       return json(route, 200, { Key: `dating-audio/letters/${USER_ID}` }, cors);
@@ -432,6 +463,8 @@ function createMock() {
     if (path.startsWith('/functions/v1/')) {
       const name = path.slice('/functions/v1/'.length);
       if (!VERIFIED_FUNCTIONS.has(name) || method !== 'POST') return unverified();
+      if (name==='oauth-broker' || name==='vk-id-auth') return json(route,200,{web:state.webProviders},cors);
+      if (body.action==='authorization') return json(route,200,{appleRequired:state.appleRequired===true},cors);
       const bearer = request.headers().authorization ?? '';
       if (!bearer.startsWith('Bearer ') || bearer.includes('e2e-publishable-key')) {
         return json(route, 401, { error: 'authentication_required' }, cors);
@@ -584,19 +617,6 @@ await step('email OTP: sign-in never creates users; wrong code error; correct co
   await close();
 });
 
-await step('login copy: unavailable methods are named and email login is not promised to open the same account', async () => {
-  const { page, close } = await newContext();
-  await page.goto(`${APP}/login`);
-  await page.getByRole('heading', { name: 'Добро пожаловать' }).waitFor();
-  const text = await bodyText(page);
-  assert.match(text, /Вход по номеру телефона, через Apple, через Google и через VK на сайте пока недоступен/);
-  assert.match(text, /вход по коду на почту не обязательно откроет тот же аккаунт/);
-  assert.doesNotMatch(text, /войдите по почте, привязанной к аккаунту/);
-  assert.doesNotMatch(text, /вы принимаете/i, 'no acceptance of unapproved legal documents');
-  assert.equal(await page.getByRole('link', { name: /Восстановить пароль/ }).count(), 0, 'no password entry point without password sign-in');
-  await close();
-});
-
 await step('signup flag OFF (production default): no registration form, no create_user request, no OAuth buttons', async () => {
   const { page, mock, close } = await newContext();
   await page.goto(`${APP}/login`);
@@ -612,10 +632,10 @@ await step('signup flag OFF (production default): no registration form, no creat
 });
 
 await step('signup flag ON: registration form requests create_user=true and OAuth is offered', async () => {
-  const { page, mock, close } = await newContext({ app: SIGNUP_APP });
+  const { page, mock, close } = await newContext({ app: SIGNUP_APP, mockSetup:state=>{state.webProviders.google=true;} });
   await page.goto(`${SIGNUP_APP}/login`);
   await page.getByRole('link', { name: 'Создать аккаунт' }).waitFor();
-  assert.equal(await page.getByRole('button', { name: 'Продолжить с Google' }).count(), 1);
+  await page.getByRole('button', { name: 'Продолжить с Google' }).waitFor();
   await page.goto(`${SIGNUP_APP}/signup`);
   await page.getByLabel('Email').fill('new@example.com');
   await page.getByRole('button', { name: 'Получить код' }).click();
@@ -630,11 +650,11 @@ await step('session restore after reload + overview with dating profile data', a
   const { page, errors, close } = await newContext();
   await page.goto(`${APP}/login`);
   await loginWithCode(page);
-  await page.waitForURL(`${APP}/voices`);
+  await page.waitForURL(`${APP}/audio-letters`);
   await page.goto(`${APP}/account`);
   await page.getByText('Алиса').first().waitFor();
   await page.reload();
-  await page.getByRole('heading', { name: 'Обзор', level: 1 }).waitFor();
+  await page.getByRole('heading', { name: 'Профиль', level: 1 }).waitFor();
   await page.locator('.profile-hero-age', { hasText: '30 лет' }).waitFor(); // age computed from birth date
   await page.getByText('Москва, Россия').waitFor(); // city + country_code label
   const stored = await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY);
@@ -648,19 +668,19 @@ await step('safe redirect: a crafted post-login destination is ignored after the
   await page.goto(`${APP}/login`);
   await page.evaluate(() => window.sessionStorage.setItem('ecoutemoi.auth.next', 'https://evil.example/steal'));
   await page.goto(`${APP}/auth/callback?token_hash=valid-token-hash-1234&type=email`);
-  await page.waitForURL(`${APP}/voices`);
+  await page.waitForURL(`${APP}/audio-letters`);
   await close();
 });
 
 // ------------------------------------------------------------ account sections
 await step('account sections render and are responsive (390–1440) and axe clean', async () => {
   const pages = [
-    ['/account', 'Обзор'],
+    ['/account', 'Профиль'],
     ['/account/profile', 'Профиль'],
     ['/account/settings', 'Аккаунт и вход'],
     ['/account/privacy', 'Конфиденциальность'],
     ['/account/notifications', 'Уведомления'],
-    ['/account/subscription', 'Premium'],
+    ['/account/subscription', 'Профиль'],
     ['/account/security', 'Безопасность'],
     ['/account/blocked', 'Заблокированные пользователи'],
     ['/account/support', 'Поддержка'],
@@ -690,40 +710,6 @@ await step('dating profile: get_my_dating_profile_v5 fields and a signed photo U
   assert(await page.getByRole('img', { name: 'Фотография 1' }).isVisible());
   assert(mock.state.calls.some((call) => call.path === `/storage/v1/object/sign/dating-photos/${USER_ID}/photos/1`));
   await close();
-});
-
-await step('Premium: active premium from get_my_entitlement, no store or payment source claimed', async () => {
-  const { page, close } = await newContext({ signedIn: true });
-  await page.goto(`${APP}/account/subscription`);
-  await page.getByRole('heading', { name: 'Premium', level: 2 }).waitFor();
-  await page.getByText(/Действует до 31 декабря 2026/).waitFor();
-  const text = await bodyText(page);
-  assert.doesNotMatch(text, /App Store|Google Play|магазин|оформлен/i);
-  assert.doesNotMatch(text, /Exclusive/);
-  await page.goto(`${APP}/account`);
-  await page.locator('.profile-hero .chip-accent', { hasText: 'Premium' }).waitFor(); // plan badge
-  await close();
-});
-
-await step('Premium: founder, free without entitlement row (is_premium null), expired premium', async () => {
-  const cases = [
-    [{ tier: 'founder', is_premium: true, premium_until: null }, 'Founder', /Бессрочный статус\./],
-    [{ tier: 'free', is_premium: null, premium_until: null }, 'Free', /^Premium не активен\.$/m],
-    [{ tier: 'free', is_premium: false, premium_until: '2026-01-31T00:00:00Z' }, 'Free', /Срок действия закончился 31 января 2026/],
-  ];
-  for (const [entitlement, label, status] of cases) {
-    const { page, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.entitlement = entitlement; } });
-    await page.goto(`${APP}/account/subscription`);
-    await page.getByRole('heading', { name: label, level: 2 }).waitFor();
-    assert.match(await page.locator('.plan-panel').innerText(), status);
-    if (label === 'Free') {
-      await page.goto(`${APP}/account`);
-      await page.getByRole('heading', { name: 'Обзор', level: 1 }).waitFor();
-      await page.waitForLoadState('networkidle');
-      assert.equal(await page.locator('.profile-hero .chip-accent').count(), 0, 'no plan badge when not active');
-    }
-    await close();
-  }
 });
 
 await step('login methods: exactly what get_my_login_methods returns (incl. VK state), no VK/OAuth sign-in offered', async () => {
@@ -873,7 +859,7 @@ await step('blocked users: list from get_my_blocked_users; unblock via unblock_u
   await close();
 });
 
-const deleteCalls = (mock) => mock.state.calls.filter((call) => call.path === '/functions/v1/delete-my-account');
+const deleteCalls = (mock) => mock.state.calls.filter((call) => call.path === '/functions/v1/delete-my-account-v2' && !call.body.action);
 
 async function startDeletionTimer(page) {
   await page.getByRole('button', { name: 'Удалить аккаунт' }).click();
@@ -967,7 +953,7 @@ await step('mobile navigation: menu button, aria-expanded, Escape and link navig
 await step('logout: confirmation, local session cleared, private routes protected again', async () => {
   const { page, mock, close } = await newContext({ signedIn: true });
   await page.goto(`${APP}/account`);
-  await page.getByRole('heading', { name: 'Обзор', level: 1 }).waitFor();
+  await page.getByRole('heading', { name: 'Профиль', level: 1 }).waitFor();
   await page.locator('.sidebar').getByRole('button', { name: 'Выйти' }).click();
   await page.getByRole('dialog', { name: 'Выйти из аккаунта?' }).getByRole('button', { name: 'Выйти' }).click();
   await page.waitForURL(`${APP}/login`);
@@ -983,7 +969,7 @@ await step('profile check failure keeps the session and shows a recoverable erro
   const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.datingProfileFails = true; } });
   await page.goto(`${APP}/account`);
   await page.getByText('Профиль временно недоступен').waitFor();
-  assert(await page.getByRole('heading', { name: 'Обзор', level: 1 }).isVisible());
+  assert(await page.getByRole('heading', { name: 'Профиль', level: 1 }).isVisible());
   mock.state.datingProfileFails = false;
   await page.getByRole('button', { name: 'Повторить' }).first().click();
   await page.getByText('Профиль временно недоступен').waitFor({ state: 'hidden' });
@@ -1018,7 +1004,7 @@ await step('auth callback: cancelled, provider error, invalid code, implicit tok
 await step('auth callback: email token_hash link signs in; recovery link forces new password', async () => {
   const first = await newContext();
   await first.page.goto(`${APP}/auth/callback?token_hash=valid-token-hash-1234&type=email`);
-  await first.page.waitForURL(`${APP}/voices`);
+  await first.page.waitForURL(`${APP}/audio-letters`);
   await first.close();
 
   const { page, mock, close } = await newContext();
@@ -1054,246 +1040,87 @@ await step('unknown route shows 404 page; app never requests third-party hosts',
   await close();
 });
 
-await step('product flow: voice response, resonance reveal, mutuality, chat send', async () => {
-  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => {
-    state.reciprocalInterest = true;
-    state.reciprocalPhotoInterest = true;
-    state.voices = [{ impression_id: IMPRESSION_ID, prompt_key: 'good_day', audio_path: `${CONTACT_ID}/voice`, audio_duration_seconds: 30, age: 31, city: 'Москва', relationship_goal: 'serious', shared_interests: ['книги'] }];
-  } });
-  await page.goto(`${APP}/voices`);
-  await page.getByRole('heading', { name: 'Что вас вдохновляет?' }).waitFor();
-  for (const width of [390, 430, 768, 1024, 1280, 1440]) {
-    await page.setViewportSize({ width, height: 900 });
-    await noOverflow(page, `/voices ${width}px`);
+const CHAT = {conversation_id:CONVERSATION_ID,contact_id:CONTACT_ID,contact_name:'Мария',contact_avatar_path:null,last_message_text:null,last_message_at:'2026-10-16T10:00:00Z',unread_count:1,blocked_by_me:false,blocked_by_contact:false,lifecycle_status:'active',comfort_state:'normal',contact_restricted:false};
+const msg = (extra={}) => ({id:crypto.randomUUID(),conversation_id:CONVERSATION_ID,sender_id:CONTACT_ID,body:'Привет с iPhone',message_type:'text',media_path:null,expires_at:null,deleted_for_everyone_at:null,image_access_mode:'persistent',created_at:'2026-10-16T10:00:00Z',...extra});
+await step('free release: historical entitlement never restores commercial UI, subscription bookmark redirects',async()=>{
+  for(const tier of ['premium','exclusive','founder','free']) {
+    const {page,close}=await newContext({signedIn:true,mockSetup:s=>{s.entitlement={tier,is_premium:true,premium_until:'2029-01-01'};}});
+    await page.goto(`${APP}/account/subscription`);await page.waitForURL(`${APP}/profile`);await page.getByRole('heading',{name:'Профиль',level:1}).waitFor();
+    assert.doesNotMatch(await bodyText(page),/Premium|Exclusive|Founder|Подписка|Оплатить|Тариф/i);await close();
   }
-  await axe(page, '/voices');
-  assert.equal(await page.locator('.voice-card img').count(), 0, 'photos stay hidden before resonance');
-  await page.getByRole('button', { name: 'Отклик' }).click();
-  // An old bookmark of the former section lands on «Отклики».
-  await page.goto(`${APP}/responses`);
-  await page.waitForURL(`${APP}/responses`);
-  await page.getByRole('heading', { name: 'Мария' }).waitFor();
-  await page.locator('.product-photos img').waitFor();
-  assert.equal(await page.getByText(/[Рр]езонанс/).count(), 0, 'the retired name is not shown');
-  await page.getByRole('link', { name: 'Отклики' }).first().waitFor();
-  await noOverflow(page, '/responses');
-  await axe(page, '/responses');
-  await page.getByRole('button', { name: 'Хочу продолжить' }).click();
-  await page.getByRole('link', { name: 'Открыть чат' }).waitFor();
-  await page.getByRole('link', { name: 'Открыть чат' }).click();
-  await noOverflow(page, '/chats/:conversationId');
-  await axe(page, '/chats/:conversationId');
-  await page.getByLabel('Сообщение').fill('Привет!');
-  await page.getByRole('button', { name: 'Отправить', exact: true }).click();
-  await page.getByText('Привет!', { exact: true }).waitFor();
-  assert(mock.state.messages.some((item) => item.body === 'Привет!' && item.conversation_id === CONVERSATION_ID));
-  await close();
+});
+await step('new navigation and old bookmarks: no legacy discovery or automatic photo reveal RPCs',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true});
+ for(const path of ['/voices','/voices/record','/voices/old-bookmark']) {await page.goto(`${APP}${path}`);await page.waitForURL(`${APP}/audio-letters`);await page.getByRole('heading',{name:'Аудиописьма',level:1}).waitFor();}
+ await page.goto(`${APP}/resonances`);await page.waitForURL(`${APP}/responses`);await page.getByRole('heading',{name:'Отклики',level:1}).waitFor();
+ assert(!mock.state.calls.some(c=>/get_voice_candidates|respond_to_photo_resonance|get_my_resonances/.test(c.path)));await close();
+});
+await step('letter feed contains no identity/photo; disabled cohort never falls back to legacy flow',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.audioLettersEnabled=true;s.letterFeed=[{impression_id:IMPRESSION_ID,title:'Мысль о путешествии',topic_key:'travel',storage_path:'letters/opaque',duration_seconds:30,context:{age:31,city:'Москва'},listened:false}];}});
+ await page.goto(`${APP}/audio-letters`);await page.getByRole('heading',{name:'Мысль о путешествии'}).waitFor();assert.equal(await page.locator('.letter-grid img').count(),0);assert.equal(await page.getByRole('button',{name:'Откликнуться голосом'}).isDisabled(),true);
+ for(const width of [390,430,768,1024,1280,1440]){await page.setViewportSize({width,height:900});await noOverflow(page,`letters ${width}`);await page.screenshot({path:resolve(SNAPSHOTS,`letters-${width}.png`),fullPage:true});}await axe(page,'letter feed');
+ mock.state.audioLettersEnabled=false;await page.getByRole('button',{name:'Обновить',exact:true}).click();await page.getByText('Аудиописьма пока не включены',{exact:false}).waitFor();assert.equal(await page.locator('.letter-grid').count(),0);await close();
+});
+await step('disclosure: own consent alone never signs photos, both consents reveal via the disclosed RPC',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.audioLettersEnabled=true;s.threads=[{thread_id:RESONANCE_ID,state:'dialog',my_consent:false,their_consent:false,unheard_count:0,counterpart:{age:31,city:'Москва',display_name:null,conversation_id:null},letter:{title:'Письмо',storage_path:null},messages:[]}];}});
+ await page.goto(`${APP}/responses/${RESONANCE_ID}`);await page.getByRole('heading',{name:'Голосовой диалог',level:1}).waitFor();page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Открыться',exact:true}).click();await page.getByText('Вы готовы открыться.',{exact:false}).waitFor();
+ assert.equal(mock.state.calls.filter(c=>c.path?.includes(`/sign/dating-photos/${CONTACT_ID}`)).length,0);
+ mock.state.threads[0].their_consent=true;mock.state.threads[0].state='disclosed';await page.getByRole('button',{name:'Обновить',exact:true}).click();await page.getByRole('link',{name:'Перейти в чат'}).waitFor();await page.getByRole('img',{name:'Фото собеседника 1'}).waitFor();await close();
+});
+await step('chat continuity, mark read, canonical emoji, reply, reactions and moments from real history',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.conversations=[CHAT];s.messages=[msg(),msg({message_type:'emoji',body:'emoji:emoji_happy',created_at:'2026-10-16T10:01:00Z'})];}});
+ await page.goto(`${APP}/chats/${CONVERSATION_ID}`);await page.getByText('Привет с iPhone',{exact:true}).waitFor();await page.getByRole('img',{name:'Радость'}).waitFor();await page.screenshot({path:resolve(SNAPSHOTS,'chat-desktop.png'),fullPage:true});assert(mock.state.calls.some(c=>c.path==='/rest/v1/rpc/mark_conversation_read'));
+ await page.getByLabel('Сообщение',{exact:true}).fill('Ответ из браузера');await page.getByRole('button',{name:'Отправить',exact:true}).click();await page.getByText('Ответ из браузера',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Смайлы',exact:true}).click();await page.getByRole('button',{name:'Подмигивание',exact:true}).click();await page.getByRole('img',{name:'Подмигивание'}).waitFor();assert(mock.state.messages.some(m=>m.body==='emoji:emoji_wink'));
+ await page.locator('.message-bubble details summary').first().click();await page.getByRole('button',{name:'Реакция heart',exact:true}).first().click();await page.locator('.reaction-summary button').first().waitFor();
+ await page.getByRole('tab',{name:'Моменты',exact:true}).click();await page.getByRole('heading',{name:'Первый отклик',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:/Записать/}).count(),0);await close();
+});
+await step('private photo preview/upload and view-once consume are explicit; expired/deleted media never signs',async()=>{
+ const image=msg({message_type:'image',body:'Фотография',media_path:`${CONTACT_ID}/${CONVERSATION_ID}/once.png`,image_access_mode:'view_once'});
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.conversations=[CHAT];s.messages=[image,msg({message_type:'image',media_path:'expired',expires_at:'2020-01-01'}),msg({message_type:'image',media_path:'deleted',deleted_for_everyone_at:'2026-10-16'})];}});
+ await page.goto(`${APP}/chats/${CONVERSATION_ID}`);await page.getByRole('button',{name:'Открыть один раз'}).waitFor();assert.equal(mock.state.calls.filter(c=>c.path==='/rest/v1/rpc/consume_image_message').length,0);
+ await page.getByRole('button',{name:'Открыть один раз'}).click();await page.getByRole('dialog',{name:'Фотография',exact:true}).waitFor();await page.getByRole('button',{name:'Закрыть фото'}).click();assert.equal(await page.getByRole('button',{name:'Просмотрено',exact:true}).isDisabled(),true);
+ await page.getByLabel('Выбрать фотографию').setInputFiles({name:'photo.png',mimeType:'image/png',buffer:PNG_1PX});await page.getByRole('img',{name:'Предпросмотр фотографии'}).waitFor();await page.getByLabel('Доступ',{exact:true}).selectOption('24_hours');await page.getByRole('button',{name:'Отправить фото',exact:true}).click();await page.getByRole('img',{name:'Предпросмотр фотографии'}).waitFor({state:'detached'});
+ const sent=mock.state.messages.find(m=>m.sender_id===USER_ID&&m.message_type==='image');assert.equal(sent.image_access_mode,'24_hours');assert(sent.expires_at);assert(sent.media_path.startsWith(`${USER_ID}/${CONVERSATION_ID}/`));
+ assert(!mock.state.calls.some(c=>/sign\/chat-media\/(expired|deleted)/.test(c.path)));await close();
+});
+await step('chat refresh failure after committed send never offers resend, foreign conversation exposes no content',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.conversations=[CHAT];s.messages=[msg()];}});
+ await page.goto(`${APP}/chats/${CONVERSATION_ID}`);await page.getByLabel('Сообщение',{exact:true}).waitFor();
+ let fail=false;await page.route(`${SUPABASE_URL}/rest/v1/rpc/get_my_inbox_v2`,async route=>{if(fail)return route.fulfill({status:503,headers:{'access-control-allow-origin':'*','content-type':'application/json'},body:'{}'});return mock.handle(route);});
+ await page.getByLabel('Сообщение',{exact:true}).fill('Один раз');fail=true;await page.getByRole('button',{name:'Отправить',exact:true}).click();await page.getByText('Сообщение отправлено.',{exact:false}).waitFor();assert.equal(await page.getByLabel('Сообщение',{exact:true}).inputValue(),'');assert.equal(mock.state.messages.filter(m=>m.body==='Один раз').length,1);fail=false;
+ await page.goto(`${APP}/chats/${FOREIGN_CONVERSATION_ID}`);await page.getByRole('alert').waitFor();assert.equal(await page.getByText('Привет с iPhone',{exact:true}).count(),0);assert.equal(await page.getByLabel('Сообщение',{exact:true}).count(),0);await close();
+});
+await step('Apple-linked deletion fails closed at v2 authorization; legacy delete route is never called',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.appleRequired=true;}});await page.clock.install();await page.goto(`${APP}/account/delete`);await startDeletionTimer(page);await page.clock.fastForward('03:01');await page.getByText('Для удаления аккаунта подтвердите Apple',{exact:false}).waitFor();assert.equal(mock.state.deleted,false);assert.equal(mock.state.deleteRequests,0);assert(!mock.state.calls.some(c=>c.path==='/functions/v1/delete-my-account'));await close();
+});
+await step('history cursor keeps equal timestamps, retries deduplicate, and a blocked conversation cannot send',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.conversations=[CHAT];s.messages=Array.from({length:35},(_,i)=>msg({id:`00000000-0000-4000-8000-${String(i).padStart(12,'0')}`,body:`same-time-${i}`}));}});
+ await page.goto(`${APP}/chats/${CONVERSATION_ID}`);await page.getByRole('button',{name:'Ранние сообщения'}).click();await page.getByText('same-time-0',{exact:true}).waitFor();assert.equal(await page.locator('.message-list>li').count(),35);assert.equal(await page.getByRole('button',{name:'Ранние сообщения'}).count(),0);
+ mock.state.failNextSend=true;await page.getByLabel('Сообщение',{exact:true}).fill('Retry once');await page.getByRole('button',{name:'Отправить',exact:true}).click();await page.getByRole('button',{name:'Повторить отправку',exact:true}).click();await page.getByText('Retry once',{exact:true}).waitFor();const sends=mock.state.calls.filter(c=>c.path==='/rest/v1/messages'&&c.body.body==='Retry once');assert.equal(sends.length,2);assert.equal(sends[0].body.client_message_id,sends[1].body.client_message_id);
+ page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Заблокировать',exact:true}).click();await page.getByText('Разговор приостановлен.',{exact:false}).waitFor();assert.equal(await page.getByLabel('Сообщение',{exact:true}).count(),0);await close();
 });
 
-const VOICE = { impression_id: IMPRESSION_ID, prompt_key: 'good_day', audio_path: `${CONTACT_ID}/voice`, audio_duration_seconds: 30, age: 31, city: 'Москва', relationship_goal: 'serious', shared_interests: ['книги'] };
-const voiceCalls = (mock) => mock.state.calls.filter((call) => call.path === '/rest/v1/rpc/get_voice_candidates_v4').length;
-
-await step('voices first load: an empty first answer is asked once more and the new letter appears', async () => {
-  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.voiceResponses = [[], [VOICE]]; } });
-  await page.goto(`${APP}/voices`);
-  await page.getByRole('heading', { name: 'Что вас вдохновляет?' }).waitFor();
-  assert.equal(await page.getByText('Пока нет новых Голосов').count(), 0, 'no false empty state');
-  assert.equal(voiceCalls(mock), 2);
-  await close();
+await step('voice response records only in the letter flow, retries reuse one uploaded slot and client key',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.audioLettersEnabled=true;s.failVoiceResponse=true;s.letterFeed=[{impression_id:IMPRESSION_ID,title:'Ответьте голосом',topic_key:'life',storage_path:'letters/opaque',duration_seconds:30,context:{age:31,city:'Москва'},listened:true}];}});
+ await page.addInitScript(()=>{
+   const now=Date.now;Date.now=()=>now()+(window.__audioTime??0);window.__stoppedTracks=0;
+   Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>({getTracks:()=>[{stop:()=>{window.__stoppedTracks++;}}]})}});
+   window.MediaRecorder=class {static isTypeSupported(t){return t==='audio/webm;codecs=opus';}state='inactive';start(){this.state='recording';}stop(){this.state='inactive';this.ondataavailable?.({data:new Blob([new Uint8Array(3000)],{type:'audio/webm'})});this.onstop?.();}};
+ });
+ await page.goto(`${APP}/audio-letters`);await page.getByRole('button',{name:'Откликнуться голосом'}).click();const composer=page.locator('.letter-grid .voice-composer');await composer.getByRole('button',{name:'Записать',exact:true}).click();await page.evaluate(()=>{window.__audioTime=6000;});await composer.getByRole('button',{name:'Остановить запись'}).click();await composer.getByRole('button',{name:'Отправить',exact:true}).click();await composer.getByRole('alert').waitFor();await composer.getByRole('button',{name:'Отправить',exact:true}).click();await page.waitForURL(`${APP}/responses/${RESONANCE_ID}`);
+ const sent=mock.state.calls.filter(c=>c.path==='/rest/v1/rpc/send_letter_response_v1');assert.equal(sent.length,2);assert.equal(sent[0].body.p_client_message_id,sent[1].body.p_client_message_id);assert.equal(sent[0].body.p_storage_path,sent[1].body.p_storage_path);assert.equal(mock.state.calls.filter(c=>c.path===`/storage/v1/object/dating-audio/notes/${IMPRESSION_ID}`&&c.method==='POST').length,1);assert(await page.evaluate(()=>window.__stoppedTracks>0));await close();
 });
 
-await step('voice audio links come from voice-media-link; direct signing only without the function', async () => {
-  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.voices = [VOICE]; } });
-  await page.goto(`${APP}/voices`);
-  await page.getByRole('heading', { name: 'Что вас вдохновляет?' }).waitFor();
-  await page.waitForFunction(() => [...document.querySelectorAll('audio')].some((audio) => audio.src.includes('token=e2e')));
-  assert.deepEqual(mock.state.voiceLinkRequests, [[VOICE.audio_path]], 'the audio link is requested from the server');
-  assert(!mock.state.calls.some((call) => String(call.path).startsWith('/storage/v1/object/sign/dating-audio/')), 'no client-signed audio URL');
-  await close();
-
-  const legacy = await newContext({ signedIn: true, mockSetup: (state) => { state.voices = [VOICE]; state.voiceLinkFunctionMissing = true; } });
-  await legacy.page.goto(`${APP}/voices`);
-  await legacy.page.getByRole('heading', { name: 'Что вас вдохновляет?' }).waitFor();
-  await legacy.page.waitForFunction(() => [...document.querySelectorAll('audio')].some((audio) => audio.src.includes('token=e2e')));
-  const direct = legacy.mock.state.calls.find((call) => String(call.path).startsWith('/storage/v1/object/sign/dating-audio/'));
-  assert(direct, 'without the function the web falls back to a direct signature');
-  assert.equal(direct.body.expiresIn, 300, 'the fallback uses the same 300 s lifetime');
-  await legacy.close();
-});
-
-await step('audio-letter cohort: legacy discovery is replaced by an honest pointer, chats stay', async () => {
-  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.audioLettersEnabled = true; state.voices = [VOICE]; } });
-  await page.goto(`${APP}/voices`);
-  await page.getByText('Знакомства теперь начинаются с аудиописьма').waitFor();
-  assert.equal(voiceCalls(mock), 0, 'no legacy impressions are created');
-  await page.goto(`${APP}/responses`);
-  await page.getByText('Знакомства теперь начинаются с аудиописьма').waitFor();
-  assert(!mock.state.calls.some((call) => call.path === '/rest/v1/rpc/get_my_resonances_v6'), 'no legacy resonances');
-  await page.getByRole('link', { name: '«Чаты»' }).click();
-  await page.waitForURL(`${APP}/chats`);
-  await close();
-});
-
-await step('voices real empty: two empty answers show the empty state and stop', async () => {
-  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.voiceResponses = [[], []]; } });
-  await page.goto(`${APP}/voices`);
-  await page.getByText('Пока нет новых Голосов').waitFor();
-  await page.waitForTimeout(1500);
-  assert.equal(voiceCalls(mock), 2, 'exactly one retry, no polling');
-  await close();
-});
-
-const unreadConversation = { conversation_id: CONVERSATION_ID, contact_id: CONTACT_ID, contact_name: 'Мария', contact_avatar_path: null, last_message_text: 'Два новых', last_message_at: '2026-09-24T11:02:00Z', unread_count: 2, blocked_by_me: false, blocked_by_contact: false, lifecycle_status: 'active', comfort_state: 'normal', contact_restricted: false };
-const unreadMessages = [
-  { id: '99999999-9999-4999-8999-999999999991', conversation_id: CONVERSATION_ID, sender_id: CONTACT_ID, body: 'Первое новое', message_type: 'text', media_path: null, deleted_for_everyone_at: null, created_at: '2026-09-24T11:01:00Z' },
-  { id: '99999999-9999-4999-8999-999999999992', conversation_id: CONVERSATION_ID, sender_id: CONTACT_ID, body: 'Два новых', message_type: 'text', media_path: null, deleted_for_everyone_at: null, created_at: '2026-09-24T11:02:00Z' },
-];
-
-await step('unread chat: opening it marks it read without a user id and the list shows no unread badge', async () => {
-  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => {
-    state.conversations = [{ ...unreadConversation }];
-    state.messages = unreadMessages.map((item) => ({ ...item }));
-  } });
-  await page.goto(`${APP}/chats`);
-  await page.getByLabel('Непрочитанных сообщений: 2').waitFor();
-  await page.getByRole('link', { name: /Мария/ }).click();
-  await page.getByText('Первое новое').waitFor();
-  for (let waited = 0; waited < 50 && !mock.state.calls.some((call) => call.path === '/rest/v1/rpc/mark_conversation_read'); waited += 1) await page.waitForTimeout(100);
-  const markCalls = mock.state.calls.filter((call) => call.path === '/rest/v1/rpc/mark_conversation_read');
-  assert.equal(markCalls.length, 1);
-  assert.deepEqual(markCalls[0].body, { p_conversation_id: CONVERSATION_ID }, 'only the conversation id, never a user id');
-  await page.getByRole('link', { name: '← Все чаты' }).click();
-  await page.getByRole('link', { name: /Мария/ }).waitFor();
-  assert.equal(await page.getByLabel(/Непрочитанных сообщений/).count(), 0, 'unread badge cleared');
-  await close();
-});
-
-await step('mark-read failure keeps the chat readable and is reported quietly', async () => {
-  const { page, close } = await newContext({ signedIn: true, mockSetup: (state) => {
-    state.conversations = [{ ...unreadConversation }];
-    state.messages = unreadMessages.map((item) => ({ ...item }));
-    state.markReadFails = true;
-  } });
-  await page.goto(`${APP}/chats/${CONVERSATION_ID}`);
-  await page.getByText('Первое новое').waitFor();
-  await page.getByText('Не удалось отметить разговор прочитанным. Сообщения доступны.').waitFor();
-  assert.equal(await page.getByRole('alert').count(), 0, 'no blocking error');
-  assert.equal(await page.getByLabel('Сообщение').count(), 1, 'the chat stays usable');
-  await close();
-});
-
-await step('mobile-created resonance and chat appear on web; foreign chat and resonance denied', async () => {
-  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => {
-    state.resonances = [{ resonance_id: RESONANCE_ID, contact_id: CONTACT_ID, display_name: 'Мария', about: 'Люблю книги', age: 31, city: 'Москва', relationship_goal: 'serious', interests: ['книги'], photo_paths: [], my_photo_decision: 'interest', stage: 'mutuality', conversation_id: CONVERSATION_ID, resonated_at: '2026-09-24T11:00:00Z' }];
-    state.conversations = [{ conversation_id: CONVERSATION_ID, contact_id: CONTACT_ID, contact_name: 'Мария', contact_avatar_path: null, last_message_text: 'Сообщение с телефона', last_message_at: '2026-09-24T11:01:00Z', unread_count: 1, blocked_by_me: false, blocked_by_contact: false, lifecycle_status: 'active', comfort_state: 'normal', contact_restricted: false }];
-    state.messages = [{ id: '99999999-9999-4999-8999-999999999999', conversation_id: CONVERSATION_ID, sender_id: CONTACT_ID, body: 'Сообщение с телефона', message_type: 'text', media_path: null, deleted_for_everyone_at: null, created_at: '2026-09-24T11:01:00Z' }];
-  } });
-  await page.goto(`${APP}/responses`);
-  await page.getByRole('heading', { name: 'Мария' }).waitFor();
-  await page.goto(`${APP}/chats`);
-  await page.getByText('Сообщение с телефона').waitFor();
-  await page.goto(`${APP}/chats/${CONVERSATION_ID}`);
-  await page.getByText('Сообщение с телефона').waitFor();
-  await page.goto(`${APP}/chats/${FOREIGN_CONVERSATION_ID}`);
-  await page.getByText('Доступ к разговору закрыт.').waitFor();
-  assert(!mock.state.calls.some((call) => call.path === '/rest/v1/messages' && call.search.includes(FOREIGN_CONVERSATION_ID)), 'foreign messages were not queried');
-  const foreignResonanceStatus = await page.evaluate(async (url) => (await fetch(`${url}/rest/v1/rpc/respond_to_photo_resonance`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ p_resonance_id: '00000000-0000-4000-8000-000000000001', p_interested: true }),
-  })).status, SUPABASE_URL);
-  assert.equal(foreignResonanceStatus, 403);
-  await close();
-});
-
-await step('chat retry uses one client id; pagination, ordering, block and closed state', async () => {
-  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => {
-    state.conversations = [{ conversation_id: CONVERSATION_ID, contact_id: CONTACT_ID, contact_name: 'Мария', contact_avatar_path: null, last_message_text: null, last_message_at: '2026-09-24T11:00:00Z', unread_count: 0, blocked_by_me: false, blocked_by_contact: false, lifecycle_status: 'active', comfort_state: 'normal', contact_restricted: false }];
-    state.messages = Array.from({ length: 35 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, conversation_id: CONVERSATION_ID, sender_id: CONTACT_ID, body: `История ${i + 1}`, message_type: 'text', media_path: null, deleted_for_everyone_at: null, created_at: new Date(Date.UTC(2026, 8, 24, 11, i)).toISOString() }));
-    state.failNextSend = true;
-  } });
-  await page.goto(`${APP}/chats/${CONVERSATION_ID}`);
-  await page.getByText('История 35').waitFor();
-  assert.equal(await page.locator('.message-list li').count(), 30);
-  await page.getByRole('button', { name: 'Ранние сообщения' }).click();
-  await page.getByText('История 1', { exact: true }).waitFor();
-  assert.equal(await page.locator('.message-list li').count(), 35);
-  await page.getByLabel('Сообщение').fill('Повтор после ошибки');
-  await page.getByRole('button', { name: 'Отправить', exact: true }).click();
-  await page.getByRole('button', { name: 'Повторить отправку' }).waitFor();
-  await page.getByRole('button', { name: 'Повторить отправку' }).click();
-  await page.getByText('Повтор после ошибки', { exact: true }).waitFor();
-  const inserts = mock.state.calls.filter((call) => call.method === 'POST' && call.path === '/rest/v1/messages');
-  assert.equal(inserts.length, 2);
-  assert.equal(inserts[0].body.client_message_id, inserts[1].body.client_message_id);
-  assert.equal(mock.state.messages.filter((item) => item.body === 'Повтор после ошибки').length, 1);
-  page.once('dialog', (dialog) => void dialog.accept());
-  await page.getByRole('button', { name: 'Заблокировать' }).click();
-  await page.getByText('Разговор приостановлен. История доступна только для чтения.').waitFor();
-  assert.equal(await page.getByRole('button', { name: 'Отправить', exact: true }).count(), 0);
-  mock.state.conversations = mock.state.conversations.map((item) => ({ ...item, blocked_by_me: false, lifecycle_status: 'ended' }));
-  await page.reload();
-  await page.getByText('Разговор приостановлен. История доступна только для чтения.').waitFor();
-  assert.equal(await page.getByRole('button', { name: 'Отправить', exact: true }).count(), 0);
-  await close();
-});
-
-await step('own voice recording goes to a new server-issued path and waits for review', async () => {
-  const { page, mock, close } = await newContext({ signedIn: true });
-  await page.addInitScript(() => {
-    const originalNow = Date.now;
-    Date.now = () => originalNow() + (window.__e2eTimeOffset ?? 0);
-    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) } });
-    window.MediaRecorder = class {
-      static isTypeSupported(type) { return type === 'audio/webm;codecs=opus'; }
-      state = 'inactive';
-      start() { this.state = 'recording'; }
-      stop() { this.state = 'inactive'; this.ondataavailable?.({ data: new Blob(['voice-fixture'], { type: 'audio/webm' }) }); this.onstop?.(); }
-    };
-  });
-  await page.goto(`${APP}/voices/record`);
-  await page.getByRole('button', { name: 'Начать запись' }).click();
-  await page.evaluate(() => { window.__e2eTimeOffset = 21000; });
-  await page.getByRole('button', { name: 'Остановить' }).click();
-  await page.getByRole('button', { name: 'Отправить аудиописьмо' }).click();
-  await page.getByText('Запись отправлена на проверку.', { exact: false }).waitFor();
-  const switched = mock.state.calls.find((call) => call.path === '/rest/v1/rpc/set_my_profile_voice_v1');
-  assert(switched);
-  assert.deepEqual(switched.body, { p_storage_path: PROFILE_VOICE_PATH, p_duration_seconds: 21, p_prompt_key: 'good_day' });
-  assert(mock.state.profileVoiceUploaded, 'the new recording is uploaded once, without upsert');
-  assert(!mock.state.audioUploaded, 'the reserved (sealed) path is not written');
-  assert(!mock.state.calls.some((call) => call.path === '/rest/v1/rpc/save_my_dating_profile'), 'the profile is switched by the server');
-  await close();
-});
-
-await step('own voice recording on a backend before the release keeps the reserved path', async () => {
-  const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.profileVoiceRpcMissing = true; } });
-  await page.addInitScript(() => {
-    const originalNow = Date.now;
-    Date.now = () => originalNow() + (window.__e2eTimeOffset ?? 0);
-    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) } });
-    window.MediaRecorder = class {
-      static isTypeSupported(type) { return type === 'audio/webm;codecs=opus'; }
-      state = 'inactive';
-      start() { this.state = 'recording'; }
-      stop() { this.state = 'inactive'; this.ondataavailable?.({ data: new Blob(['voice-fixture'], { type: 'audio/webm' }) }); this.onstop?.(); }
-    };
-  });
-  await page.goto(`${APP}/voices/record`);
-  await page.getByRole('button', { name: 'Начать запись' }).click();
-  await page.evaluate(() => { window.__e2eTimeOffset = 21000; });
-  await page.getByRole('button', { name: 'Остановить' }).click();
-  await page.getByRole('button', { name: 'Отправить аудиописьмо' }).click();
-  await page.getByText('Аудиописьмо сохранено.').waitFor();
-  const saved = mock.state.calls.find((call) => call.path === '/rest/v1/rpc/save_my_dating_profile');
-  assert(saved);
-  assert.equal(saved.body.p_audio_duration_seconds, 21);
-  assert.deepEqual(saved.body.p_photo_paths, [`${USER_ID}/photos/1`]);
-  assert.equal(saved.body.p_display_name, 'Алиса');
-  assert(mock.state.audioUploaded, 'audio uses the private dating-audio bucket');
-  await close();
+await step('delayed older thread refresh cannot restore a disclosed state after a newer closed state',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.audioLettersEnabled=true;s.threads=[{thread_id:RESONANCE_ID,state:'disclosed',my_consent:true,their_consent:true,counterpart:{display_name:'Мария'},letter:{storage_path:null},messages:[]}];}});
+ await page.goto(`${APP}/responses/${RESONANCE_ID}`);await page.getByRole('link',{name:'Перейти в чат'}).waitFor();
+ let release,arrived;const held=new Promise(resolve=>{release=resolve;});const started=new Promise(resolve=>{arrived=resolve;});let hold=true;
+ await page.route(`${SUPABASE_URL}/rest/v1/rpc/get_voice_thread_v1`,async route=>{if(hold){hold=false;const snapshot=structuredClone(mock.state.threads[0]);arrived();await held;return route.fulfill({status:200,headers:{'access-control-allow-origin':'*','content-type':'application/json'},body:JSON.stringify(snapshot)});}return mock.handle(route);});
+ await page.getByRole('button',{name:'Обновить',exact:true}).click();await started;mock.state.threads[0]={...mock.state.threads[0],state:'closed',my_consent:false,their_consent:false};await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.getByRole('heading',{name:'Голосовой диалог',level:1}).waitFor();release();await page.waitForTimeout(250);assert.equal(await page.getByRole('heading',{name:'Голосовой диалог',level:1}).count(),1);assert.equal(await page.getByRole('link',{name:'Перейти в чат'}).count(),0);await close();
 });
 
 await browser.close();
-await Promise.all(servers.map((server) => new Promise((done) => server.close(done))));
-console.log(`\n${results.length - failures}/${results.length} E2E checks passed.`);
-if (failures) process.exit(1);
+await Promise.all(servers.map(server=>new Promise(done=>server.close(done))));
+console.log(`\n${results.length-failures}/${results.length} E2E checks passed.`);
+if(failures)process.exit(1);

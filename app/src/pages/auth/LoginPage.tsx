@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router';
 
 import { useAuth } from '../../auth/AuthProvider';
@@ -7,11 +8,13 @@ import { AuthLayout } from '../../layouts/AuthLayout';
 import { safeInternalPath } from '../../lib/redirect';
 import { useDocumentTitle } from '../../lib/useDocumentTitle';
 import { EmailCodeForm } from './EmailCodeForm';
+import { EmailPasswordForm } from './EmailPasswordForm';
 import { LegalNote, OAuthButtons, UnavailableProvidersNote } from './OAuthButtons';
 
 type LoginState = { from?: unknown; notice?: unknown } | null;
 
 export function LoginPage() {
+  const [emailOpen, setEmailOpen] = useState(true);
   useDocumentTitle('Вход');
   const location = useLocation();
   const { error: authError, notice: authNotice } = useAuth();
@@ -33,7 +36,8 @@ export function LoginPage() {
           {authError ? <Notice tone="error">{authError}</Notice> : null}
           <OAuthButtons nextPath={nextPath} />
           {config.oauthProviders.length ? <div className="divider"><span>или</span></div> : null}
-          <EmailCodeForm mode="login" />
+          <button className="button button-secondary button-block" onClick={() => setEmailOpen(!emailOpen)}>Продолжить с почтой</button>
+          {emailOpen && <><EmailCodeForm mode="login" /><EmailPasswordForm /></>}
           <UnavailableProvidersNote />
           <div className="auth-links">
             {config.signupEnabled ? (

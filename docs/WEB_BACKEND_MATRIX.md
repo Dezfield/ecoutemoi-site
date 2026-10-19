@@ -2,7 +2,22 @@
 
 Mobile main: `e6be69b193b81848ab5b282b6390da413e82ac2f`. Site base: `43ff0aabe9ebb49c7b8f369424df3a8fde611b32`.
 
-Every frontend RPC has a committed-main source and argument signature below. Source verification is separate from deployed verification. Account/RLS ownership and deleted-account guards remain server-owned. No browser identity is chosen from a request parameter.
+Baseline frontend RPCs have a committed-main source and argument signature below. Legal acceptance calls added on 19 October are declared separately as undeployed candidate contracts. Source verification is separate from deployed verification. Account/RLS ownership and deleted-account guards remain server-owned. No browser identity is chosen from a request parameter.
+
+## Legal candidate — not deployed
+
+Source: mobile `2498cc9888f603ca3fbcdab73a51092344ce5930`, branch `release/prelaunch-ios-2026-10-18`.
+Required migrations: `20261018120000_legal_acceptance.sql`, `20261018120100_account_deletion_selfie_cleanup.sql`, `20261019061807_legal_consent_hardening.sql`.
+
+| RPC | Arguments | Candidate source |
+|---|---|---|
+| get_my_legal_acceptance_v1 | none | 20261018120000; state extended by 20261019061807 |
+| accept_legal_documents_v1 | p_documents jsonb, p_platform text, p_app_version text | 20261018120000 |
+| withdraw_legal_consent_v1 | p_doc_type text, p_platform text, p_app_version text | 20261018120000 |
+
+All three run for the JWT subject, with no user id supplied by the browser. The browser sends exact local document versions and hashes. Missing legacy registry preserves existing mandatory-account access; new audio publication stays closed until the consent backend is available. Other legal-check errors keep private pages unmounted. The candidate contract file is `app/tests/backend-candidate-contracts.json`; it must not be presented as verified production state.
+
+The public privacy text and web consent copies have edition 2026-10-19; Terms remain 2026-10-14. Before enabling server enforcement, deploy the matching web build and compatible mobile release. This candidate does not change signup, OAuth provider flags, audio rollout or publication settings.
 
 | RPC | Arguments | Committed source |
 |---|---|---|

@@ -4,6 +4,8 @@ import { Navigate, useLocation } from 'react-router';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { safeInternalPath } from '../lib/redirect';
 import { useAuth } from './AuthProvider';
+import { LegalAcceptanceScreen } from '../legal/LegalScreens';
+import { AuthLayout } from '../layouts/AuthLayout';
 
 /**
  * Guards private routes. This is a UX guard only: every private query is
@@ -17,7 +19,7 @@ import { useAuth } from './AuthProvider';
  *   → the account shell, which shows the matching banner
  */
 export function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { status, profileError } = useAuth();
+  const { status, profileError, refreshProfileState, signOut } = useAuth();
   const location = useLocation();
 
   if (status === 'initializing') return <LoadingScreen />;
@@ -25,7 +27,11 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
   if (status === 'password_recovery') return <Navigate to="/auth/reset-password" replace />;
-  if (status === 'authenticated' && !profileError) return <LoadingScreen label="Проверяем профиль…" />;
+  if (status === 'legal_acceptance_required') return <LegalAcceptanceScreen />;
+  if (status === 'authenticated') return profileError ? <AuthLayout><section className="panel">
+    <p role="alert">{profileError}</p><button onClick={() => { void refreshProfileState(); }}>Повторить проверку</button>
+    <button onClick={() => { void signOut(); }}>Выйти</button>
+  </section></AuthLayout> : <LoadingScreen label="Проверяем профиль…" />;
   return <>{children}</>;
 }
 

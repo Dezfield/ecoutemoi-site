@@ -1,0 +1,15 @@
+{
+  "status": "CANDIDATE_NOT_DEPLOYED",
+  "sourceBranch": "release/prelaunch-ios-2026-10-18",
+  "sourceSha": "2498cc9888f603ca3fbcdab73a51092344ce5930",
+  "requiredMigrations": [
+    "20261018120000_legal_acceptance.sql",
+    "20261018120100_account_deletion_selfie_cleanup.sql",
+    "20261019061807_legal_consent_hardening.sql"
+  ],
+  "rpcs": {
+    "get_my_legal_acceptance_v1": { "source": "supabase/migrations/20261018120000_legal_acceptance.sql" },
+    "accept_legal_documents_v1": { "source": "supabase/migrations/20261018120000_legal_acceptance.sql" },
+    "withdraw_legal_consent_v1": { "source": "supabase/migrations/20261018120000_legal_acceptance.sql" }
+  }
+}

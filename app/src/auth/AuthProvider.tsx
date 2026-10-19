@@ -12,6 +12,7 @@ import {
 
 import { cloudEnabled, requireSupabase } from '../lib/supabase';
 import { authErrorMessage, NETWORK_ERROR_MESSAGE } from './errors';
+import { loadLegalState } from '../legal/api';
 import type { AuthContextValue, AuthState, AuthStatus } from './types';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -104,20 +105,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      commit((current) => ({
-        status:
-          current.user?.id === session.user.id && classifiedStatuses.includes(current.status)
-            ? current.status
-            : 'authenticated',
+      commit({
+        status: 'authenticated',
         session,
         user: session.user,
         error: null,
         profileError: null,
         notice: null,
-      }));
+      });
 
       try {
         const client = requireSupabase();
+        const legal = await loadLegalState();
+        if (run !== classificationRun.current) return;
+        if (legal.mandatoryPending) {
+          commit({ status: 'legal_acceptance_required', session, user: session.user, error: null, profileError: null, notice: null });
+          return;
+        }
         const [profileResult, datingResult] = await Promise.all([
           client.from('profiles').select('id').eq('id', session.user.id).maybeSingle(),
           client
@@ -218,10 +222,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const sameUser = current.user?.id === session.user.id;
       if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-        if (sameUser) {
-          commit((latest) => ({ ...latest, session, user: session.user }));
-          return;
-        }
+        void classifySession(session, recoveryRef.current);
+        return;
       }
       // SIGNED_IN also fires when a tab regains focus; only re-check the
       // profile when the user changed or the previous check did not succeed.

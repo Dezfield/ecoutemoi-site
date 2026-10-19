@@ -4,6 +4,7 @@ import { AsyncState } from '../../components/AsyncState';
 import { PageHeader } from '../../components/PageHeader';
 import { config } from '../../config';
 import { useAsync } from '../../lib/useAsync';
+import { ConsentSettings } from '../../legal/LegalScreens';
 
 export function PrivacyPage() {
   const { user } = useAuth();
@@ -15,6 +16,8 @@ export function PrivacyPage() {
       <PageHeader eyebrow="Мой аккаунт" title="Конфиденциальность">
         <p>Настройки видимости вашего профиля. Документы — в разделе «Документы».</p>
       </PageHeader>
+
+      <ConsentSettings />
 
       <section className="panel" aria-labelledby="by-design-title">
         <h2 id="by-design-title" className="panel-title">Приватность по замыслу</h2>

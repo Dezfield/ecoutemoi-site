@@ -18,7 +18,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 
@@ -61,7 +61,7 @@ const b64url = (value) => Buffer.from(JSON.stringify(value)).toString('base64url
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 // Verified contracts (ecoutemoi-mobile main). Keep in sync with docs/WEB_BACKEND_MATRIX.md.
-const VERIFIED_RPCS = new Set([
+const ALLOWED_RPCS = new Set([
   'prepare_voice_upload_v1','send_letter_response_v1','mark_audio_letter_listened_v1','toggle_message_reaction','get_message_reactions','consume_image_message','edit_chat_message','delete_chat_message_for_everyone','get_audio_letter_feed_v1','get_my_voice_threads_v1','get_voice_thread_v1','set_disclosure_consent_v1','get_my_disclosed_profiles_v1',
   'block_user',
   'get_my_inbox_v2',
@@ -157,8 +157,16 @@ const PNG_1PX = Buffer.from(
   'base64',
 );
 
+const legalDocuments = JSON.parse(readFileSync('src/legal/documents.json','utf8'));
+const candidate = JSON.parse(readFileSync('tests/backend-candidate-contracts.json','utf8'));
+assert.equal(candidate.status,'CANDIDATE_NOT_DEPLOYED');
+for(const name of Object.keys(candidate.rpcs)){ ALLOWED_RPCS.add(name); GUARDED_RPCS.add(name); }
+
 function createMock() {
   const state = {
+    legalAccepted: Object.fromEntries(Object.keys(legalDocuments).map(type=>[type,true])),
+    legalWithdrawable: {audio_publication:true,selfie_verification:true},
+    legalReadFails: false,
     onboardingComplete: true,
     datingProfileFails: false,
     identities: [identity('email')],
@@ -263,12 +271,27 @@ function createMock() {
     // ---- PostgREST RPC: verified functions only
     if (path.startsWith('/rest/v1/rpc/')) {
       const rpc = path.slice('/rest/v1/rpc/'.length);
-      if (!VERIFIED_RPCS.has(rpc)) return unverified();
+      if (!ALLOWED_RPCS.has(rpc)) return unverified();
       if (state.deleted) {
         state.callsAfterDeletion.push(rpc);
         if (GUARDED_RPCS.has(rpc)) return json(route, 403, { code: '42501', message: 'Account is unavailable' }, cors);
       }
+      const legalState=()=>({documents:Object.entries(legalDocuments).map(([type,doc])=>({doc_type:type,version:doc.version,sha256:doc.sha256,mandatory:doc.mandatory,accepted:state.legalAccepted[type],withdrawable:state.legalWithdrawable[type]??false,feature_available:true})),mandatory_pending:!state.legalAccepted.terms||!state.legalAccepted.privacy_policy});
       switch (rpc) {
+        case 'get_my_legal_acceptance_v1':
+          return state.legalReadFails ? json(route,503,{code:'503',message:'Service unavailable'},cors) : json(route,200,legalState(),cors);
+        case 'accept_legal_documents_v1':
+          for(const selected of body.p_documents??[]){
+            const doc=legalDocuments[selected.doc_type];
+            if(!doc||doc.version!==selected.version||doc.sha256!==selected.sha256)return json(route,400,{code:'22023',message:'Version mismatch'},cors);
+            state.legalAccepted[selected.doc_type]=true;
+            if(!doc.mandatory)state.legalWithdrawable[selected.doc_type]=true;
+          }
+          return json(route,200,legalState(),cors);
+        case 'withdraw_legal_consent_v1':
+          if(!['audio_publication','selfie_verification'].includes(body.p_doc_type))return json(route,400,{code:'22023',message:'Invalid consent'},cors);
+          state.legalAccepted[body.p_doc_type]=false;state.legalWithdrawable[body.p_doc_type]=false;
+          return json(route,200,legalState(),cors);
         case 'get_my_login_methods':
           return json(route, 200, state.loginMethods, cors);
         case 'get_my_active_sessions':
@@ -968,11 +991,11 @@ await step('logout: confirmation, local session cleared, private routes protecte
 await step('profile check failure keeps the session and shows a recoverable error (no blank screen)', async () => {
   const { page, mock, close } = await newContext({ signedIn: true, mockSetup: (state) => { state.datingProfileFails = true; } });
   await page.goto(`${APP}/account`);
-  await page.getByText('Профиль временно недоступен').waitFor();
-  assert(await page.getByRole('heading', { name: 'Профиль', level: 1 }).isVisible());
+  await page.getByRole('alert').waitFor();
+  assert.equal(await page.getByRole('heading',{name:'Профиль',level:1}).count(),0,'private shell must not mount after failed classification');
   mock.state.datingProfileFails = false;
-  await page.getByRole('button', { name: 'Повторить' }).first().click();
-  await page.getByText('Профиль временно недоступен').waitFor({ state: 'hidden' });
+  await page.getByRole('button',{name:'Повторить проверку'}).click();
+  await page.getByRole('heading',{name:'Профиль',level:1}).waitFor();
   await close();
 });
 
@@ -1118,6 +1141,31 @@ await step('delayed older thread refresh cannot restore a disclosed state after 
  let release,arrived;const held=new Promise(resolve=>{release=resolve;});const started=new Promise(resolve=>{arrived=resolve;});let hold=true;
  await page.route(`${SUPABASE_URL}/rest/v1/rpc/get_voice_thread_v1`,async route=>{if(hold){hold=false;const snapshot=structuredClone(mock.state.threads[0]);arrived();await held;return route.fulfill({status:200,headers:{'access-control-allow-origin':'*','content-type':'application/json'},body:JSON.stringify(snapshot)});}return mock.handle(route);});
  await page.getByRole('button',{name:'Обновить',exact:true}).click();await started;mock.state.threads[0]={...mock.state.threads[0],state:'closed',my_consent:false,their_consent:false};await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.getByRole('heading',{name:'Голосовой диалог',level:1}).waitFor();release();await page.waitForTimeout(250);assert.equal(await page.getByRole('heading',{name:'Голосовой диалог',level:1}).count(),1);assert.equal(await page.getByRole('link',{name:'Перейти в чат'}).count(),0);await close();
+});
+
+
+await step('legal acceptance blocks account requests until both mandatory statements are explicit',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.legalAccepted.terms=false;s.legalAccepted.privacy_policy=false;}});
+ await page.goto(APP+'/account');await page.getByRole('heading',{name:'Прежде чем продолжить',level:1}).waitFor();
+ for(const width of [390,1440]){await page.setViewportSize({width,height:900});await noOverflow(page,'legal '+width);await axe(page,'legal '+width);await page.screenshot({path:resolve(SNAPSHOTS,'legal-acceptance-'+width+'.png'),fullPage:true});}
+ assert.equal(mock.state.calls.filter(c=>['/rest/v1/profiles','/rest/v1/dating_profiles','/rest/v1/rpc/get_my_entitlement'].includes(c.path)).length,0);
+ const button=page.getByRole('button',{name:'Принять и продолжить'});assert(await button.isDisabled());
+ await page.getByLabel('Мне есть 18 лет.',{exact:false}).check();assert(await button.isDisabled());
+ await page.getByLabel('Я ознакомлен(а) с Политикой конфиденциальности.').check();await button.click();
+ await page.getByRole('heading',{name:'Профиль',level:1}).waitFor();
+ const action=mock.state.calls.find(c=>c.path==='/rest/v1/rpc/accept_legal_documents_v1');assert.deepEqual(action.body.p_documents.map(d=>d.doc_type),['terms','privacy_policy']);assert.equal(action.body.p_platform,'web');await close();
+});
+await step('previous consent remains withdrawable without accepting a newer edition',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.legalAccepted.audio_publication=false;s.legalWithdrawable.audio_publication=true;}});
+ await page.goto(APP+'/account/privacy');await page.getByText('Дано согласие на прежнюю редакцию').waitFor();
+ page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Отозвать согласие',exact:true}).first().click();await page.getByText('Согласие не дано',{exact:true}).waitFor();
+ assert.equal(mock.state.calls.filter(c=>c.path==='/rest/v1/rpc/accept_legal_documents_v1').length,0);assert.equal(mock.state.calls.find(c=>c.path==='/rest/v1/rpc/withdraw_legal_consent_v1').body.p_doc_type,'audio_publication');await close();
+});
+await step('a failed legal check keeps private data closed and can be retried',async()=>{
+ const {page,mock,close}=await newContext({signedIn:true,mockSetup:s=>{s.legalReadFails=true;}});
+ await page.goto(APP+'/account');await page.getByRole('alert').waitFor();
+ assert.equal(mock.state.calls.filter(c=>c.path==='/rest/v1/profiles'||c.path==='/rest/v1/dating_profiles').length,0);
+ mock.state.legalReadFails=false;await page.getByRole('button',{name:'Повторить проверку'}).click();await page.getByRole('heading',{name:'Профиль',level:1}).waitFor();await close();
 });
 
 await browser.close();

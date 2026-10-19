@@ -7,7 +7,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-const VERIFIED_RPCS = Object.keys(JSON.parse(readFileSync('tests/backend-main-contracts.json','utf8')).rpcs).sort();
+const candidate = JSON.parse(readFileSync('tests/backend-candidate-contracts.json','utf8'));
+const VERIFIED_RPCS = [...Object.keys(JSON.parse(readFileSync('tests/backend-main-contracts.json','utf8')).rpcs), ...Object.keys(candidate.rpcs)].sort();
 const VERIFIED_TABLES = ['dating_profiles', 'messages', 'privacy_settings', 'profiles'];
 const VERIFIED_BUCKETS = ['chat-media', 'dating-audio', 'dating-photos'];
 const VERIFIED_FUNCTIONS = ['delete-my-account-v2', 'oauth-broker', 'vk-id-auth', 'voice-media-link'];
@@ -25,7 +26,9 @@ walk('src');
 const collect = (pattern) =>
   [...new Set(sources.flatMap(({ text }) => [...text.matchAll(pattern)].map((match) => match[1])))].sort();
 
-test('only RPCs committed in mobile main are called', () => {
+test('RPCs match the verified baseline or explicitly declared candidate migrations', () => {
+  assert.equal(candidate.status, 'CANDIDATE_NOT_DEPLOYED');
+  assert.ok(candidate.requiredMigrations.includes('20261019061807_legal_consent_hardening.sql'));
   assert.deepEqual(collect(/\.rpc\(\s*['"`]([A-Za-z0-9_]+)['"`]/g), VERIFIED_RPCS);
 });
 

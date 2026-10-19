@@ -25,6 +25,7 @@ import {
   type VoiceThread,
 } from '../../product/audioLetters';
 import { productError, signedMedia } from '../../product/api';
+import { AudioPublicationConsent } from '../../legal/LegalScreens';
 
 export function AudioLettersPage() {
   const navigate = useNavigate();
@@ -192,7 +193,7 @@ export function AudioLettersPage() {
                   Название
                   <input maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} />
                 </label>
-                <VoiceComposer
+                <AudioPublicationConsent><VoiceComposer
                   min={state.limits.letter_min_seconds}
                   max={state.limits.letter_max_seconds}
                   purpose="letter"
@@ -202,7 +203,7 @@ export function AudioLettersPage() {
                     setTitle('');
                     await load();
                   }}
-                />
+                /></AudioPublicationConsent>
               </>
             )}
           </section>

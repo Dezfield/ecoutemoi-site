@@ -15,6 +15,7 @@ export type AuthStatus =
   | 'initializing'
   | 'unauthenticated'
   | 'authenticated'
+  | 'legal_acceptance_required'
   | 'onboarding_required'
   | 'authenticated_profile_ready'
   | 'password_recovery';

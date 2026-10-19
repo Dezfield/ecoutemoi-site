@@ -3,7 +3,7 @@ import documents from './legalDocuments.json';
 
 type DocumentProps = { path: string; base: string };
 type Section = { title: string; paragraphs?: string[]; steps?: string[] };
-type LegalDocument = { lead: string; sections: Section[] };
+type LegalDocument = { lead: string; sections: Section[]; updatedAt?: string };
 const pages: Record<string, LegalDocument> = {
   '/privacy': documents.privacy,
   '/terms': documents.terms,
@@ -27,7 +27,7 @@ export function DocumentContent({ path, base }: DocumentProps) {
   const document = pages[path];
   if (!document) return null;
   return <>
-    <div className="document-notice" role="note"><strong>Редакция от {documents.updatedAt}</strong></div>
+    <div className="document-notice" role="note"><strong>Редакция от {document.updatedAt ?? documents.updatedAt}</strong></div>
     <p className="document-lead">{document.lead}</p>
     {document.sections.map(section => <section key={section.title} className="document-part">
       <h2>{section.title}</h2>
